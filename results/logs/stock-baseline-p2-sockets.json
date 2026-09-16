@@ -1,0 +1,18 @@
+{
+  "label": "baseline",
+  "measured": "2026-09-13 JST",
+  "pair": 2,
+  "transport": "sockets",
+  "k": "-",
+  "ep": "on",
+  "max_tokens": 512,
+  "serve_flags": "--tensor-parallel-size 2 --enable-expert-parallel --enable-ep-weight-filter --kv-cache-dtype fp8 --max-num-seqs 32 --max-model-len 131072 --gpu-memory-utilization 0.85; no draft",
+  "note": "sanitised measure.py output: url, prompts_file and per-prompt rows stripped",
+  "levels": [
+    {"c": 1, "prompts": 8, "total_completion_tokens": 4096, "wall_s": 381.16, "agg_tok_s": 10.75, "ttft_median_s": 0.361, "tpot_median_ms": 95.3, "tpot_mean_ms": 92.5, "fails": 0},
+    {"c": 4, "prompts": 16, "total_completion_tokens": 8192, "wall_s": 117.28, "agg_tok_s": 69.85, "fails": 0},
+    {"c": 16, "prompts": 32, "total_completion_tokens": 16299, "wall_s": 172.19, "agg_tok_s": 94.66, "fails": 0},
+    {"c": 32, "prompts": 64, "total_completion_tokens": 32384, "wall_s": 340.6, "agg_tok_s": 95.08, "fails": 0}
+  ],
+  "acceptance": {"d_accepted_tokens": 0, "d_draft_tokens": 0, "d_drafts": 0, "acceptance": null, "mean_accepted_len": null}
+}

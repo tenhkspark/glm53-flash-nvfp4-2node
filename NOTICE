@@ -1,0 +1,15 @@
+glm53-flash-nvfp4-2node
+Copyright 2026 the author
+
+This product includes software developed by the author, licensed under
+the Apache License, Version 2.0.
+
+Overlay files under overlays/ are produced by patching the serving
+image's own source files at build time; any upstream copyright notices
+carried by those inputs are retained in the generated outputs. The
+step-attribution patcher emits files that keep the original
+"Copyright contributors to the vLLM project" header.
+
+Development tooling credit: Grok, Claude Code, Codex.
+
+No model weights are distributed with this repository.

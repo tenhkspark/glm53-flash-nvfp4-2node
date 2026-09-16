@@ -1,0 +1,5 @@
+# stock + MTP K=2, pair 2, sockets, expert-parallel OFF (ep=0) — measured 2026-09-15 JST
+# serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86; MTP draft K=2; expert parallel disabled
+# sanitised measure.py LEVEL/ACCEPT excerpt
+LEVEL label=c1pair-K2 C=1 prompts=64 tok/s=17.84 tokens=32283 wall=1809.56s fails=0 tpot_med_ms=55.2 ttft_med_s=0.441
+ACCEPT label=c1pair-K2 d_accepted=17838.0 d_draft_tokens=28852.0 d_drafts=14426.0 acceptance=0.6183 mean_accepted_len=2.2365

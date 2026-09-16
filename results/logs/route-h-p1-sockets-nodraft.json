@@ -1,0 +1,35 @@
+{
+  "label": "h1-nodraft",
+  "measured": "2026-09-16 JST",
+  "pair": 1,
+  "transport": "sockets",
+  "k": "-",
+  "ep": "on",
+  "max_tokens": 512,
+  "serve_flags": "--max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; no draft",
+  "note": "sanitised measure.py output: url, prompts_file and per-prompt rows stripped",
+  "levels": [
+    {
+      "c": 1,
+      "prompts": 64,
+      "total_completion_tokens": 32316,
+      "wall_s": 1702.33,
+      "agg_tok_s": 18.98,
+      "ttft_median_s": 0.33,
+      "tpot_median_ms": 51.5,
+      "tpot_mean_ms": 52.0,
+      "fails": 0,
+      "finish_reasons": {
+        "length": 61,
+        "stop": 3
+      }
+    }
+  ],
+  "acceptance": {
+    "d_accepted_tokens": 0,
+    "d_draft_tokens": 0,
+    "d_drafts": 0,
+    "acceptance": null,
+    "mean_accepted_len": null
+  }
+}

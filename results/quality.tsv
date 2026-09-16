@@ -1,0 +1,10 @@
+key	metric	stock	route_h	meaning
+ppl	Perplexity, held-out passages	11.94	12.54 (ratio 1.051 = +5.1%)	How surprised the model is by fresh text; +5.1% is a real but small regression inside the declared 1.10 gate.
+eval200_reason	eval-200: reason	32/50	27/50	Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise.
+eval200_trap	eval-200: trap	13/50	16/50	Trick-question resistance; +3 of 50 on a 50-item column -- same limit applies.
+eval200_tool	eval-200: tool	0/50	0/50	Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side.
+eval200_longread	eval-200: longread	22/50	25/50	Long-document comprehension; +3 of 50 on a 50-item column -- same limit applies.
+eval200_total	eval-200: total	67/200	68/200 (+0.005 acc)	Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence.
+ttft2000	TTFT, ~2000-token probe	2.380 s	2.436 s (x1.02)	Delay before the first token on a long prompt; a 2% increase measured on this probe -- no user-perception test was run.
+degenerate	Degenerate outputs, 64-prompt ruler	0	0	Empty or looping completions; zero on both sides.
+eval13	13-item evaluate suite	--	pending	The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands.

@@ -1,0 +1,64 @@
+{"prompt": "フロントのバンドル差分監視をリリースゲートにする案、事後監視だけにする案の予防効果。", "seed_id": "634fdbbb8b7931b4"}
+{"prompt": "雨水が庭にたまりやすい家で、自分でできる簡易対策の手順と注意点を順番に説明してください。", "seed_id": "88019184acae9886"}
+{"prompt": "生活：梅雨時期の室内干しと除湿機・換気の使い分けについて、カビを防ぐ注意点を中心に比較・説明してください。", "seed_id": "55012c05df64b142"}
+{"prompt": "次の内容について、今すぐ決めるべき判断と、判断のために足りない情報を分けて書いてください。\n\n---\nRun a pre-mortem for the data pipeline cutover and record mitigations against the top risks.\n---", "seed_id": "c4a1011438e222ad"}
+{"prompt": "イベントのスキーマに非必須メタを厚く載せる設計、ペイロード最小設計の拡張性比較。", "seed_id": "96eaad1ef189540e"}
+{"prompt": "表のピボットの元データ範囲が不足して欠ける典型を書いてほしい。", "seed_id": "361ff64f1c326173"}
+{"prompt": "計算のミスを減らす最終確認で、問題文の条件に戻る手順を教えてください。", "seed_id": "589461531a5c3b5d"}
+{"prompt": "risk: コードレビュー依頼が形骸化しやすい点3つと防ぎ方", "seed_id": "38edc4c9bc3d499b"}
+{"prompt": "食材の使い切りを意識した三食の献立の立て方の手順を、注意点つきで説明してください。特殊な器具や店名は使わないでください。", "seed_id": "88e48fa02de9ef36"}
+{"prompt": "ブラウザのサイトデータのエクスポートが可能な範囲の概要を書いて。", "seed_id": "24486c045d8ca23f"}
+{"prompt": "イベント駆動に切り替える価値があるか、現状のバッチ連携と比較して判断材料を出して。", "seed_id": "940f5013f6033f48"}
+{"prompt": "Compare centralizing estimates with team-local forecasting and portfolio rollups.\n\n（日本語で答えてください。）", "seed_id": "4f3a4825070f3ba3"}
+{"prompt": "品質改善がツール導入で終わり、使いこなしが無い。定着の検収は？", "seed_id": "ad843c9bce575f91"}
+{"prompt": "Propose a staged plan for introducing mandatory change windows only for high risk.\n\n（日本語で答えてください。）", "seed_id": "43fbcca9c17131f6"}
+{"prompt": "キャッシュの更新を書き込み経路の必須ステップにする設計、非同期追随設計の一貫性比較。", "seed_id": "cfd414b18c16b90d"}
+{"prompt": "An alert storm during a cascading failure needs suppression without blindness. Progressive suppression design?\n\n（日本語で答えてください。）", "seed_id": "1a69babf42df6a94"}
+{"prompt": "キューの毒メッセージを隔離する設計と失敗のまま滞留させる設計、検知容易性で比較。", "seed_id": "8b4041f50aadf80d"}
+{"prompt": "Design a comparison of blue-green and rolling updates specifically for stateful internal queues.\n\n（日本語で答えてください。）", "seed_id": "37a599ee9ca6aefc"}
+{"prompt": "Propose option A and option B for the following, with pros and cons.\n\n---\nExplain how freeze-thaw cycles crack some roads and sidewalks.\n---\n\n（日本語で答えてください。）", "seed_id": "b08d0cd0ded2497d"}
+{"prompt": "List 3 likely failure modes and one prevention step each.\n\n---\nPlease turn this expert interview into a plain explainer with pull-quote worthy lines removed of names.\n---\n\n（日本語で答えてください。）", "seed_id": "1501efb1ddacda70"}
+{"prompt": "Compare blueprints and reference implementations as adoption strategies.\n\n（日本語で答えてください。）", "seed_id": "4d46f61d3c020da3"}
+{"prompt": "未確定情報の共有ルールを、確度ラベルと更新期限のセットで標準化したい。", "seed_id": "4e88ee92dbdea2a3"}
+{"prompt": "水回りの掃除を indents に indents する理由をまとめて。", "seed_id": "fe9c9dd59650855c"}
+{"prompt": "優先順位を変えた結果の副作用を事前に列挙し、許容できるか判定して。", "seed_id": "d366b4cb576ea976"}
+{"prompt": "残業申請の承認依頼メールを、日付・想定時間・業務内容・締切理由が読み手にすぐわかるように書いてください。", "seed_id": "f7fb2d3d96ec12a2"}
+{"prompt": "誤答ノートが膨らみすぎました。整理して再活用する手順を教えてください。", "seed_id": "43a648761442a4d2"}
+{"prompt": "次の内容について、今すぐ決めるべき判断と、判断のために足りない情報を分けて書いてください。\n\n---\nCompile a glossary of networking terms from the current course unit and revisit weak areas mid-week.\n---", "seed_id": "57847bf31b66f092"}
+{"prompt": "An alert storm during a known maintenance still pages people. Maintenance window wiring?\n\n（日本語で答えてください。）", "seed_id": "c5e65c11ae89a753"}
+{"prompt": "中古家電を選ぶときのチェック項目を優先度順に並べ、購入後すぐやる初期確認を書いてください。", "seed_id": "17972ea9fdc9c56a"}
+{"prompt": "Break improving cross-repo consistency into enforceable conventions.\n\n（日本語で答えてください。）", "seed_id": "50383c81f9f1a000"}
+{"prompt": "季節が春夏秋冬と変化する主な天文的な理由を、地球の公転と地軸の傾きに触れながら説明してください。", "seed_id": "fd3f351e7f3aea57"}
+{"prompt": "When does adding a shared package registry mirror reduce more risk than it adds?\n\n（日本語で答えてください。）", "seed_id": "538918e649b588fd"}
+{"prompt": "UIの権限不足時に機能を灰表示する案と非表示にする案、発見と混乱のバランス。", "seed_id": "2d24b30c328f3a49"}
+{"prompt": "データ欠損時の振る舞いが未定義。合格条件に含めるべきケースは？", "seed_id": "3a630e21516ab015"}
+{"prompt": "週末に部屋の掃除・買い物・書類整理を半日で終わらせたい。所要時間の目安と順番の付け方、先に片付けるべきものについて段取り案を出してください。", "seed_id": "2eda416f85ec984b"}
+{"prompt": "次の内容について、今すぐ決めるべき判断と、判断のために足りない情報を分けて書いてください。\n\n---\nSequence home logistics for a multi-day trip: mail hold, plant care, and appliance power-down checklist.\n---", "seed_id": "22dab97a1af5a4a3"}
+{"prompt": "自宅NASの定期バックアップ設定でriskとして失敗しやすい点3つと防ぎ方を示して", "seed_id": "5281a4e56b3f06dc"}
+{"prompt": "計測ダッシュボードが多すぎて見る場所が散る。司令塔用の最小セットは。", "seed_id": "b0972226cf965c32"}
+{"prompt": "この成果は「動くデモ」止まり。製品品質へのギャップ一覧を作って。", "seed_id": "956c48af75cf5b9d"}
+{"prompt": "risk: 初めてのセキュリティ診断依頼で失敗しやすい点3つと防ぎ方", "seed_id": "21a751e377808caf"}
+{"prompt": "趣味の学習ロードマップを今四半期で進めるか、今決める判断と足りない情報を整理して", "seed_id": "9b1408e6625e81d2"}
+{"prompt": "稲作が日本の集落や年中行事に与えた影響を、歴史的な観点から説明してください。", "seed_id": "99f4183d1e597b29"}
+{"prompt": "品質を数値化しすぎて文脈が消える。数値と物語の併用ルールは？", "seed_id": "de27004dd8ea34b7"}
+{"prompt": "Compare blue-green and canary releases for a stateful system.\n\n（日本語で答えてください。）", "seed_id": "939d84b8ddf15b8e"}
+{"prompt": "An infrastructure module recreated a stateful resource due to a computed name change. Name stability rules?\n\n（日本語で答えてください。）", "seed_id": "eb24b44038c5c65c"}
+{"prompt": "ホットフィックスと正規修正が競合しそう。マージ方針をどう決めるか。", "seed_id": "1622cd7f0df99fa0"}
+{"prompt": "障害対応のエスカレーションが『全員招集』になりがち。段階招集の設計は？", "seed_id": "980b91f7d5afa73e"}
+{"prompt": "Client-side error reporting PII-scrubber removed too much and blocked triage. Scrubber tuning?\n\n（日本語で答えてください。）", "seed_id": "129129c297141d96"}
+{"prompt": "水が氷になるときと水蒸気になるときで、分子の動きや並びはどう変わるか説明しなさい。", "seed_id": "522b34f6848bb0a1"}
+{"prompt": "「急ぎではないが重要」な課題を定期的に想起させる報告の仕掛けは。", "seed_id": "147ad5da74682f6e"}
+{"prompt": "CIをプルリク毎全実行するA案と、差分影響だけにするB案のフィードバック速度と資源消費の利点欠点", "seed_id": "53a3b115d458063a"}
+{"prompt": "週の計画に対する実績の差分分析を、翌週の優先に直結する型へ変えて。", "seed_id": "7ddde6921e1b28c8"}
+{"prompt": "Break reducing time spent in status meetings into concrete experiments.\n\n（日本語で答えてください。）", "seed_id": "69f8c8b30578e7f0"}
+{"prompt": "外部ライブラリを自前実装に置き換えるか現状維持か、判断と足りない情報。", "seed_id": "4d43b15b3059778e"}
+{"prompt": "デプロイを手動確認多めにするA案とチェック自動化を増やすB案の利点欠点を挙げてください。", "seed_id": "af09e1a8b318d095"}
+{"prompt": "Client app treated HTTP 204 and empty 200 identically and broke a flow. Status handling matrix?\n\n（日本語で答えてください。）", "seed_id": "89f937d60cce6c72"}
+{"prompt": "Propose a staged plan for mandatory ownership and runbook links on every paging alert.\n\n（日本語で答えてください。）", "seed_id": "79ec9fac0542773e"}
+{"prompt": "Design a lightweight way to trial shorter release cadences for internal platforms.\n\n（日本語で答えてください。）", "seed_id": "64e99069deb7e24b"}
+{"prompt": "An alert runbook linked to an internal doc that moved. Link rot controls for ops docs?\n\n（日本語で答えてください。）", "seed_id": "d0535b4fcb61af1e"}
+{"prompt": "Warm pool instances serve stale code. Is image bake, pull policy, or registration wrong?\n\n（日本語で答えてください。）", "seed_id": "2084dde7b86b2779"}
+{"prompt": "Compare the following design on 3 criteria and summarize tradeoffs.\n\n---\nGive a short, careful summary of the mental health resource overview.\n---\n\n（日本語で答えてください。）", "seed_id": "dd383aa4b692a27d"}
+{"prompt": "Database connection encryption ciphers were outdated after a baseline change. Cipher rollout plan?\n\n（日本語で答えてください。）", "seed_id": "d16a74f5e645d376"}
+{"prompt": "コードレビューコメントを「文面を長めに丁寧」にするA案と「短くチェックリスト型」にするB案の利点欠点。", "seed_id": "e4ba467cb3242ff5"}
+{"prompt": "タスクの完了条件に数値目標を入れるときの測り方定義を教えて。", "seed_id": "13dca44b2aed3b14"}

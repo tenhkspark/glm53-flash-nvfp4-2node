@@ -1,0 +1,43 @@
+{
+  "label": "h-pubgrade-tcp2",
+  "measured": "2026-09-16 JST",
+  "pair": 1,
+  "transport": "sockets",
+  "k": 2,
+  "ep": "on",
+  "max_tokens": 512,
+  "serve_flags": "--max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; MTP draft K=2; prefix caching disabled; fresh non-overlapping 64-prompt set",
+  "note": "sanitised measure.py output: url, prompts_file and per-prompt rows stripped",
+  "levels": [
+    {
+      "c": 1,
+      "prompts": 64,
+      "total_completion_tokens": 32619,
+      "wall_s": 1373.55,
+      "agg_tok_s": 23.75,
+      "ttft_median_s": 0.394,
+      "ttft_mean_s": 0.384,
+      "tpot_median_ms": 41.2,
+      "tpot_mean_ms": 41.4,
+      "tpot_weighted_mean_ms": 41.4,
+      "fails": 0,
+      "finish_reasons": {
+        "length": 61,
+        "stop": 3
+      }
+    }
+  ],
+  "acceptance": {
+    "d_accepted_tokens": 18061.0,
+    "d_draft_tokens": 29072.0,
+    "d_drafts": 14536.0,
+    "acceptance": 0.6213,
+    "mean_accepted_len": 2.2425,
+    "per_pos": {
+      "0": 11338.0,
+      "1": 6723.0
+    },
+    "per_pos_hist": null,
+    "log_acceptance": 0.6214
+  }
+}

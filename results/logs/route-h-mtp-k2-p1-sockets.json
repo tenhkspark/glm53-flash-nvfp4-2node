@@ -1,0 +1,41 @@
+{
+  "label": "h1-mtpK2",
+  "measured": "2026-09-16 JST",
+  "pair": 1,
+  "transport": "sockets",
+  "k": 2,
+  "ep": "on",
+  "max_tokens": 512,
+  "serve_flags": "--max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; MTP draft K=2",
+  "note": "sanitised measure.py output: url, prompts_file and per-prompt rows stripped",
+  "levels": [
+    {
+      "c": 1,
+      "prompts": 64,
+      "total_completion_tokens": 32407,
+      "wall_s": 1349.6,
+      "agg_tok_s": 24.01,
+      "ttft_median_s": 0.389,
+      "tpot_median_ms": 40.7,
+      "tpot_mean_ms": 40.9,
+      "fails": 0,
+      "finish_reasons": {
+        "length": 61,
+        "stop": 3
+      }
+    }
+  ],
+  "acceptance": {
+    "d_accepted_tokens": 17960.0,
+    "d_draft_tokens": 28870.0,
+    "d_drafts": 14435.0,
+    "acceptance": 0.6221,
+    "mean_accepted_len": 2.2442,
+    "log_acceptance": 0.6221
+  },
+  "spec_counters_after": {
+    "vllm:spec_decode_num_drafts_total": 14435.0,
+    "vllm:spec_decode_num_draft_tokens_total": 28870.0,
+    "vllm:spec_decode_num_accepted_tokens_total": 17960.0
+  }
+}

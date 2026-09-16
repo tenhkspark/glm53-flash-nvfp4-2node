@@ -1,0 +1,31 @@
+# Derived image for GLM_NCCL_IB=1: rdma-core >= 54.0 so the NCCL NET/IB
+# plugin can init. NCCL 2.30.7 (image) dlvsym's libmlx5 for
+# mlx5dv_get_data_direct_sysfs_path and mlx5dv_reg_dmabuf_mr at symbol
+# version MLX5_1.25; that version node first appears in rdma-core 54.0
+# (providers/mlx5/libmlx5.map). The base image (Ubuntu 24.04 noble) ships
+# rdma-core 50.0 (libmlx5.so.1.24.50.0, max node MLX5_1.24), so the plugin
+# fails init and every TP all-reduce falls back to NET/Socket. The DGX
+# Spark hosts run the identical 50.0 userspace, so host bind-mounts cannot
+# satisfy the ABI. noble has no newer rdma-core; questing (25.10) ships
+# 56.1-1ubuntu1 whose deps all resolve on noble (libc6 >= 2.38,
+# libnl-3-200/libnl-route-3-200 >= 3.2.7, adduser, libibverbs1 >= 53).
+# libibverbs-dev must ride along: it owns the unversioned libmlx5.so
+# symlink NCCL dlopens and has a strict =version dep on libibverbs1.
+# Pin-Priority -10 keeps every other package on noble.
+FROM vllm/vllm-openai:glm53-flash-arm64-cu130
+RUN set -eux; \
+    echo 'deb http://ports.ubuntu.com/ubuntu-ports questing main' \
+      > /etc/apt/sources.list.d/questing-rdma.list; \
+    { printf 'Package: *\nPin: release n=questing\nPin-Priority: -10\n\n'; \
+      printf 'Package: libibverbs1 ibverbs-providers libibverbs-dev librdmacm1t64\nPin: release n=questing\nPin-Priority: 990\n'; \
+    } > /etc/apt/preferences.d/questing-rdma; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libibverbs1 ibverbs-providers libibverbs-dev librdmacm1t64; \
+    rm -f /etc/apt/sources.list.d/questing-rdma.list \
+          /etc/apt/preferences.d/questing-rdma; \
+    rm -rf /var/lib/apt/lists/*; \
+    objdump -T /usr/lib/aarch64-linux-gnu/libmlx5.so | grep MLX5_1.25 \
+      | grep -q mlx5dv_get_data_direct_sysfs_path; \
+    objdump -T /usr/lib/aarch64-linux-gnu/libmlx5.so | grep MLX5_1.25 \
+      | grep -q mlx5dv_reg_dmabuf_mr

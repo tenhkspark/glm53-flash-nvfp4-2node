@@ -1,0 +1,20 @@
+# built overlay outputs + image snapshots (regenerate via
+# overlays/build-overlays.sh)
+overlays/_image/
+overlays/_build/
+
+# measurement output: ship the TSVs and the sanitised per-row log
+# excerpts under results/logs/; keep any other working notes local
+results/*
+!results/*.tsv
+!results/logs/
+!results/logs/*
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# local serving config (holds node addresses)
+serve/serve.env
+setup.env
