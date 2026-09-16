@@ -1,0 +1,5 @@
+# stock + MTP K=2, pair 2, NCCL/IB (RDMA), expert-parallel on — measured 2026-09-16 JST
+# serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; NCCL over IB image; MTP draft K=2
+# sanitised measure.py LEVEL/ACCEPT excerpt
+LEVEL label=c1pair-K2 C=1 prompts=64 tok/s=23.93 tokens=32753 wall=1368.77s fails=0 tpot_med_ms=41.0 ttft_med_s=0.366
+ACCEPT label=c1pair-K2 d_accepted=18040.0 d_draft_tokens=29394.0 d_drafts=14697.0 acceptance=0.6137 mean_accepted_len=2.2275

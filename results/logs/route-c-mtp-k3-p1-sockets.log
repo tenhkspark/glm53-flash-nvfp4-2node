@@ -1,0 +1,5 @@
+# route c + MTP K=3, pair 1, sockets, expert-parallel on — measured 2026-09-16 JST
+# serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; MTP draft K=3
+# sanitised measure.py LEVEL/ACCEPT excerpt
+LEVEL label=c7-mtpK3 C=1 prompts=64 tok/s=19.39 tokens=32689 wall=1686.07s fails=0 tpot_med_ms=50.9 ttft_med_s=0.461
+ACCEPT label=c7-mtpK3 d_accepted=19498.0 d_draft_tokens=39591.0 d_drafts=13197.0 acceptance=0.4925 mean_accepted_len=2.4775
