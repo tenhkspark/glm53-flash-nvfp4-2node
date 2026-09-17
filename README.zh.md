@@ -12,7 +12,12 @@ draft、K=2,标尺固定为 64 条日语散文提示,`max_tokens=512`,
 本仓库就是这个数字背后的配方:跨两台节点的 Ray 张量并行
 (TP=2)、我用来恢复单流解码速度的仅权重重新量化(route h)、
 一个支持 RDMA 的派生镜像,以及让 MTP draft 能够加载的 overlay。
-这里的一切都是我自己的实现、在我自己的硬件上的实测——
+这些都是我自己的实现、在我自己的硬件上的实测。但随仓库附带的文件
+里有一个不属于我:`overlays/flashinfer_mla_sparse_sm120.py` 就是
+服务镜像自带的 vLLM 源文件,以 Apache-2.0 授权并保留其上游版权
+标头,我在这里改动它以支持 no-rope MLA;其余 overlay 是我写的
+patcher,在构建时改写同一镜像自带的源码。哪里是上游、哪里是我的
+改动,[NOTICE](NOTICE) 逐个文件划清了界线——
 *enjoying the incomplete*。
 
 下面每个数字都带着它的条件(pair、transport、提示条数、K、
