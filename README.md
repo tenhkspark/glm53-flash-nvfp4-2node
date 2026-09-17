@@ -1,15 +1,35 @@
 # glm53-flash-nvfp4-2node
 
-Latest release: **v1** (git tag `v1`). The requantized checkpoint is
-published on Hugging Face as `tenhkspark/GLM-5.3-Flash-NVFP4-Wabi` —
-one repo, git tags `v1` and `v2`; the top of this file always names
-the latest.
+[English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [한국어](README.ko.md)
 
-My recipe for serving `GLM-5.3-Flash-NVFP4` on two NVIDIA DGX Spark
-nodes with Ray tensor parallelism (TP=2), plus the weight-only
-requantization I use to recover single-stream decode speed. Everything
-here is my own implementation and my own measurements on my own
-hardware — *enjoying the incomplete*.
+Two NVIDIA DGX Spark nodes serving `GLM-5.3-Flash-NVFP4` at **35.09
+tok/s** of single-stream decode — one user, one stream, C=1, thinking
+off — measured on node pair 1 over NCCL/IB (RDMA) with the
+checkpoint's own MTP draft at K=2, on a fixed ruler of 64 Japanese
+prose prompts at `max_tokens=512`, `temperature=0`. In use that means
+Japanese prose arrives at about the pace I read it on screen instead
+of in visible bursts.
+
+This repository is the recipe behind that number: Ray tensor
+parallelism across the two nodes (TP=2), the weight-only
+requantization I use to recover single-stream decode speed (route h),
+an RDMA-capable derived image, and the overlays that make the MTP
+draft load. Everything here is my own implementation and my own
+measurements on my own hardware — *enjoying the incomplete*.
+
+Every number below carries its conditions (pair, transport, prompt
+count, K, expert parallel, `max_tokens`), and every row in the speed
+table names the log it came from. One row that would make the
+comparison strictly like-for-like is still being measured; it is
+marked `pending` rather than filled in with something close.
+
+The recipe has also been run back from the outside. Starting from an
+empty working directory on the other node pair, with only the published
+[AGENTS.md](AGENTS.md) and `scripts/agent-run.sh` to go on, the run
+reached a serving configuration and measured 37.08 tok/s on its
+10-prompt smoke — +5.7% against the 35.09 headline, inside the 7% band
+the shipped checker allows. "Reproduced from the published runbook"
+below says what that test does and does not show.
 
 No model weights are included. The input checkpoint is the NVIDIA
 `GLM-5.3-Flash-NVFP4` release; the requantization script rewrites the
@@ -23,118 +43,26 @@ complete. I will keep working and publish updates as results come in,
 and I would be glad to see your versions on Hugging Face and GitHub
 too.
 
-## What you get
+Release tag: **v1**. The requantized checkpoint is published on
+Hugging Face as `tenhkspark/GLM-5.3-Flash-NVFP4-Wabi`, one repo, at
+the same tag. There is no v2 yet: a v2 tag will appear only if some
+other configuration passes the same gate and measures faster on the
+same ruler.
 
-In the measured single-stream setting — one user, one stream, C=1,
-thinking off — the served model answers at about 35 tok/s on two DGX
-Sparks. The exact figure is 35.09 tok/s, measured on pair 1 over
-NCCL/IB (RDMA) with the MTP draft at K=2 on a fixed ruler of 64
-Japanese prose prompts at `max_tokens=512`, `temperature=0`. The stock
-checkpoint's reference row — pair 2, sockets, no draft, the first 8
-prompts of the same ruler — gives 10.75 tok/s; the closest rows are in
-the results table below (stock + MTP K=2 on pair 1 over sockets ran
-19.05 tok/s with expert parallel off; the same route-h + MTP K=2 config
-on pair 1 over sockets ran 24.01 tok/s with it on — see the `ep`
-column).
+## Why two nodes
 
-## Where it comes from
+The checkpoint is about 204 GB on disk (about 190 GB after the route-h
+rewrite) and does not fit in one node's 128 GB of unified memory, so
+the model is split across two nodes with TP=2 and every decode step
+crosses the link between them. The two nodes are cabled port to port
+with a single 200GbE QSFP copper cable on their ConnectX-7-class
+ports, with no switch in the path; that direct-attached pair is what
+every number here was measured on. The same netdev carries both
+transports: `NCCL_IB=1` runs NCCL over RoCE v2 ("NCCL/IB (RDMA)" in
+the tables), `NCCL_IB=0` falls back to TCP ("sockets").
 
-| ingredient | what it is | measured |
-|---|---|---|
-| base speed | route h requant (W4A16 NVFP4 on the BF16 dense side) | 18.98 tok/s, no draft — pair 1, sockets, all 64 prompts (the no-draft RDMA row is pending; the stock no-draft row is 10.75 tok/s on pair 2, sockets, first 8 prompts) |
-| speculation | the checkpoint's own MTP head, K=2 | acceptance 0.62, ~2.24 output tokens per cycle |
-| combined | requant + MTP at K=2 + NCCL over RDMA | **35.09 tok/s** — pair 1, RDMA, all 64 prompts, K=2 |
-
-With greedy decoding, the speculation step accepts only tokens the base
-model would have chosen, so it does not change the output distribution.
-The quality delta therefore belongs to the requantization alone, which
-is what the next section measures.
-
-## What it costs
-
-The requant trades a bounded quality delta for speed. The gate was
-declared before any speed run; the released configuration had to pass
-all four criteria:
-
-| criterion | threshold | stock | route h | result |
-|---|---|---|---|---|
-| degenerate outputs over the 64-prompt ruler | 0 | 0 | 0 | PASS |
-| perplexity ratio on held-out passages | <= 1.10 | 1.0 | 1.051 | PASS |
-| eval-200 live accuracy (150 items, the 0/50 tool floor excluded) | no more than 0.02 below stock | 0.447 | 0.453 (+0.0067) | PASS |
-| TTFT on a ~2000-token probe | within 1.2x of stock | 2.380 s | 2.436 s (x1.02) | PASS |
-
-The perplexity ratio of 1.051 is a 5.1% increase over stock — inside the
-declared gate, but an increase, not parity. Eval-200 moved +0.005 on the
-200-item raw score and +0.0067 on the 150 live items the gate scores;
-a set this size cannot resolve a difference that small, and it does not
-by itself prove equivalence.
-
-The full delta — both scores and what each metric means in use — rendered
-from `results/quality.tsv`:
-
-<!-- quality:start -->
-| metric | stock | route h | what it means for a user |
-|---|---|---|---|
-| Perplexity, held-out passages | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by fresh text; +5.1% is a real but small regression inside the declared 1.10 gate. |
-| eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
-| eval-200: trap | 13/50 | 16/50 | Trick-question resistance; +3 of 50 on a 50-item column -- same limit applies. |
-| eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
-| eval-200: longread | 22/50 | 25/50 | Long-document comprehension; +3 of 50 on a 50-item column -- same limit applies. |
-| eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. |
-| TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt; a 2% increase measured on this probe -- no user-perception test was run. |
-| Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. |
-| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
-<!-- quality:end -->
-
-## How to reproduce
-
-The full runbook — prerequisites, exact commands, expected wall times,
-and disk needs — is in [AGENTS.md](AGENTS.md). In short: requantize
-the checkpoint with `requant/requant.py --target h`, build the RDMA
-image and the overlays, serve with `serve/start-head.sh` and
-`serve/start-worker.sh`, gate with `requant/verify.py check`, then
-measure with `bench/measure.py`.
-
-## What did not work, and when
-
-Measured on the same ruler; listed so the search space is on record.
-
-<!-- failures:start -->
-
-| item | what | cause | date |
-|---|---|---|---|
-| **moe-dsl-kernel-overlay** | Three successive failures. First, the patched kernel path was dead code: the backend is gated to device family 100 and never instantiates on sm_121, so an apparent -4 ms TPOT delta was run-to-run noise. Second, after re-hooking the class the deployment selects, every call failed a static eligibility check (the model's SwiGLU clamp limit) and silently fell back to stock: 256 calls, zero dispatches. Third, a host-side cute.make_layout call raised a TypeError at first use. | Instrumented, then fixed or abandoned each time; the overlay is not in the released config. | 2026-09-15 |
-| **fp8-dense** | FP8-quantized dense linear variants ran slower than W4A16 NVFP4 on this stack. | Measured slower; not adopted. | 2026-09-15 |
-| **mtp-k-ge-3** | K=3 gave 19.39 tok/s and K=4 gave 17.44 tok/s vs K=2's 19.83 on an earlier requant route (sockets, pair 1); on stock, K=4 gave 15.2 and K=5 gave 13.1. | Per-position acceptance drops more quickly than the extra draft tokens save steps. K=2 was the best of the K values measured on this route; on route h + RDMA a first sweep-A pass measured K=1 at 34.28 and K=3 at 31.98 tok/s, and the full same-checkpoint sweep in both K orders is still pending. | 2026-09-16 |
-| **ep-off** | Removing --enable-expert-parallel gained ~0.7%. | Inside the pair-to-pair offset; not a lever. | 2026-09-15 |
-| **eager-mode** | --enforce-eager is ~10 ms/step faster on the stock single-stream step, but the gain mostly does not carry into MTP decode. | The step it speeds up is not the step speculation runs. Not adopted. | 2026-09-15 |
-| **k4-k5-boot-oom** | K=4/K=5 failed to boot for the route-h checkpoint at these memory settings (128 GB unified memory); the stock checkpoint booted both. One K=4 attempt was killed externally by an orphaned pipeline's timeout cleanup; the genuine cause: the Ray memory monitor's default 95% threshold OOM-killed the worker right after speculator CUDA-graph capture, and at K=5 the capture took 103 s and 3.03 GiB, leaving 0.89 GiB of KV cache where 0.92 GiB was required. | Memory accounting and capture cost scale with K; the fix direction is a smaller drafter, not bigger K. | 2026-09-15 |
-| **requant-loader-write** | A fused-KDA write missing the NVFP4 global scale produced KeyError ...weight_scale_2 at load. | Writer bug; now covered by verify.py config and the kda-quant overlay. | 2026-09-15 |
-| **nccl-ll-symm-ar** | NCCL low-latency envs and symmetric-memory all-reduce booted but returned empty response bodies or died under concurrency. | Broken output path; unsafe, not adopted. | 2026-09-15 |
-| **ev-ordering** | The expensive drafter-training data chain (extraction, two generation passes, conversion; ~5 h of wall time on the 2-GPU pair, ~10 GPU-hours) was queued ahead of the cheap K sweep; the trained drafter's holdout top-1 came out ~0.08, and the sweep showed K=2 was already the best of the measured values. | Sequenced by pipeline momentum instead of expected information per GPU-hour. | 2026-09-15 |
-
-<!-- failures:end -->
-
-Timeline of the measurements above and below:
-
-| date | milestone |
-|---|---|
-| 2026-09-13 | stock baseline on pair 2: 10.75 tok/s C=1 |
-| 2026-09-15 | official MTP at K=2 on stock: 19.05 tok/s on pair 1, 17.84 on pair 2; most alternative levers failed in this window |
-| 2026-09-16 | route h requant, RDMA image, headline 35.09 tok/s on pair 1 |
-
-## Why I started from the NVIDIA NVFP4 checkpoint
-
-The official `nvidia/GLM-5.3-Flash-NVFP4` release is quantized with
-NVIDIA's own toolchain, and its model card publishes BF16-vs-NVFP4
-benchmark numbers that show essentially no accuracy loss (model card
-revision `09b04e5e74bca08ca8549fc736d4cdd8624bfde3`): GPQA Diamond
-0.9217 -> 0.9211, SciCode 0.5621 -> 0.5769, MMMU Pro 0.7688 -> 0.763,
-AA-LCR 0.71 -> 0.7106, IFBench 0.613 -> 0.6054, Terminal Bench 2.1
-0.8258 -> 0.8315. That makes it a trustworthy base. My route h only
-extends the same 4-bit treatment to the layers the official release left
-in BF16, and I keep the gate numbers next to the speed numbers so the
-trade-off stays visible.
+Because the link sits inside the decode loop, transport is not a
+detail here — it is one of the three levers below.
 
 ## Stage 1 — the released configuration
 
@@ -151,6 +79,216 @@ trade-off stays visible.
   model's own MTP layer, enabled by the `mtp-bf16` overlay which builds
   the draft subtree unquantized (the stock image makes the draft inherit
   the target's NVFP4 quant config and crashes loading BF16 MTP weights).
+
+## What each change buys
+
+The honest decomposition needs four rows on one pair, one transport
+and one ruler. Three of them exist now; the fourth is being measured:
+
+| step | what it isolates | row | measured |
+|---|---|---|---|
+| stock, no draft, RDMA | the starting point on the fast transport | pending | pending |
+| route h, no draft, RDMA | the requant alone | pair 1, 64 prompts | 27.15 tok/s |
+| route h + MTP K=2, RDMA | the draft on top of the requant | pair 1, 64 prompts | 35.09 tok/s |
+| route h + MTP K=2, sockets | the same checkpoint and draft on the slow transport | pair 1, 64 prompts | 24.01 tok/s |
+
+<!-- pending: stock-rdma-nodraft -->
+
+The middle two rows now share every condition — pair 1, NCCL/IB (RDMA),
+the same 64 Japanese prose prompts, `temperature=0`, `max_tokens=512`,
+expert parallel on, thinking off — so the draft separates cleanly from
+everything else:
+
+- route h, no draft: 27.15 tok/s, TPOT median 35.7 ms, weighted TPOT
+  36.4 ms, TTFT median 0.269 s, zero failed requests.
+- route h + MTP K=2: 35.09 tok/s, TPOT median 27.9 ms, TTFT median
+  0.320 s, acceptance 0.6221, zero failed requests.
+
+35.09 / 27.15 = 1.29, so on this configuration the draft is worth about
+1.29x on top of the requantized checkpoint. It is the one ratio in this
+README taken across a single condition change; every other pair of rows
+differs in more than one thing, so I do not divide them.
+
+What I can say today, each within one pair and one transport:
+
+- **The draft.** Route h, pair 1, 64 prompts: over RDMA 27.15 tok/s
+  without a draft and 35.09 with MTP at K=2 (x1.29); over sockets 18.98
+  and 24.01, expert parallel on in all four. Acceptance on the K=2
+  passes runs 0.6174–0.6221, i.e. about 2.24 output tokens per draft
+  cycle.
+- **The transport.** Route h + MTP K=2, pair 1, 64 prompts: 24.01 tok/s
+  over sockets against 35.09 over RDMA; the two publication re-runs
+  read 23.75 / 24.35 over sockets and 34.48 / 35.12 over RDMA on the
+  same pair, so the transport gap reproduces.
+- **The requant.** Still no same-condition pair. The requant's own row
+  is now measured on pair 1 over RDMA (27.15 tok/s, no draft), but the
+  stock row it needs as a denominator is not: the stock reference I
+  have was taken on pair 2, over sockets, over the first 8 prompts of
+  the ruler at `--max-model-len 131072` (10.75 tok/s), so dividing by
+  it would mix three condition changes at once. That is what the
+  remaining pending row is for; until it lands I print no factor for
+  the requant.
+
+## What it costs
+
+The requant trades quality for speed. The trade is bounded only on the
+four criteria below — all Japanese, single-turn, thinking off — and not
+on anything outside them. The gate was declared before any speed run;
+the released configuration had to pass all four:
+
+| criterion | threshold | stock | route h | result |
+|---|---|---|---|---|
+| degenerate outputs over the 64-prompt ruler | 0 | 0 | 0 | PASS |
+| perplexity ratio on the 8-sentence probe | <= 1.10 | 1.0 | 1.051 | PASS |
+| eval-200 live accuracy (150 items, the 0/50 tool floor excluded) | no more than 0.02 below stock | 0.447 | 0.453 (+0.0067) | PASS |
+| TTFT on a ~2000-token probe | within 1.2x of stock | 2.380 s | 2.436 s (x1.02) | PASS |
+
+**How perplexity is measured.** Perplexity is measured on eight short
+Japanese sentences (249 characters in total) written for this test and
+defined inline in `requant/verify.py`; they are not drawn from any
+public corpus and no training-set exclusion is claimed. Each sentence
+is sent to the served endpoint as a prefill-only request
+(`/v1/completions` with `echo=true`, `max_tokens=1`,
+`prompt_logprobs=1`, temperature 0); the log-probabilities of the
+actual prompt tokens are accumulated across all eight sentences and
+the mean negative log-likelihood over that single pooled token stream
+is exponentiated into one number. Stock and candidate are measured by
+the identical function against the same served model, and the gate is
+the ratio candidate/stock <= 1.10 — the released route h scored 12.54
+against 11.94 stock, a ratio of 1.051. The sample is small, so this
+checks for gross degradation, not for parity.
+
+**How eval-200 is scored.** eval-200 is a fixed set of 200 Japanese
+single-turn prompts shipped in this repository (`bench/eval-200.jsonl`):
+50 each of reason, trap, tool and longread, mixed easy/medium/hard.
+Every item is answered greedily on the served endpoint (temperature 0,
+`max_tokens` 384, thinking skipped via an empty assistant continuation)
+and graded by a deterministic rule in `requant/verify.py`:
+whitespace-insensitive exact match when the item's rubric demands the
+answer alone, substring containment otherwise; trap items must carry a
+refusal and no digits, tool items must name the required functions in
+order plus the expected final value. The tool column is 0/50 on every
+checkpoint by construction — the prompts never name a callable function
+and no tool schema is sent — so the gate scores the remaining 150 live
+items and requires the candidate to stay within 0.02 of stock with zero
+request errors (0.447 stock -> 0.453 route h). The raw totals 67/200 ->
+68/200 are reported for transparency only; they include that permanent
+zero column and are not the pass/fail criterion. The category moves are
+not independent: the trap grader rewards refusal, so a more hedging
+model scores higher there and lower on reason. A net +1 total can be
+produced by a directional degradation.
+
+**The TTFT probe** is those same eight sentences concatenated twelve
+times, sent as one prompt; the gate compares the candidate's
+time-to-first-token on it against stock, on the route-h sockets
+serving.
+
+The perplexity ratio of 1.051 is a 5.1% increase over stock — inside the
+declared gate, but an increase, not parity. Eval-200 moved +0.005 on the
+200-item raw score and +0.0067 on the 150 live items the gate scores. A
+150-item set resolves accuracy to roughly +-0.08 at 95% confidence
+(paired, assuming ~20% of items flip), so the +0.0067 I measured is
+indistinguishable from zero — and so would be a true regression of 0.05.
+The 0.02 gate threshold is finer than what this set can resolve: a
+checkpoint genuinely 0.06-0.08 worse than stock would still pass it more
+often than not. Reading this gate as 'no regression' is wrong; it only
+rules out a large one.
+
+Speculative decoding with greedy sampling is designed to accept only
+tokens the target model would have produced, so in principle the draft
+cannot move the output distribution and the quality delta belongs to
+the requantization alone. I did not measure that equivalence, so treat
+it as the design argument it is, not as a measured result.
+
+The full delta — both scores and what each metric means in use —
+rendered from `results/quality.tsv`:
+
+<!-- quality:start -->
+| metric | stock | route h | what it means for a user |
+|---|---|---|---|
+| Perplexity, 8-sentence Japanese probe | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
+| eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
+| eval-200: trap | 13/50 | 16/50 | Trick-question resistance, graded mechanically: an answer passes if it contains a refusal marker and no digits. That rule rewards hedging, so a checkpoint that became more evasive would gain here while losing on reason -- which is the direction this pair of columns actually moved (+3 trap, -5 reason). I did not test whether the two moves share that cause; do not read the +1 net total as 'no change'. |
+| eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
+| eval-200: longread | 22/50 | 25/50 | Long-document comprehension; +3 of 50 on a 50-item column -- same limit applies. |
+| eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. The 95% interval on this difference is about +-0.08, which is four times wider than the 0.02 gate threshold. |
+| TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt. The 2% gap is the median of three runs of the same prompt and is the same size as the run-to-run spread I measure on identical configurations, so this probe shows no TTFT regression it could have detected -- it does not show that TTFT is unchanged. No user-perception test was run. |
+| Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. Zero out of 64 is consistent with a true rate of up to about 5% (rule of three), and the detector only catches empty output, repeated-token runs and exactly periodic loops -- it cannot see a fluent answer that is wrong, truncated or off-topic. |
+| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
+<!-- quality:end -->
+
+Every row above is Japanese, single-turn and thinking off. The one row
+that would cover long context, parallel requests and agentic tool use is
+the pending 13-item suite; until it lands, those dimensions are untested
+on this checkpoint.
+
+**What this gate does not measure.** Every number above is Japanese,
+single-turn, thinking off, greedy, under 2k tokens of context and one
+request at a time. I have no measurement of this checkpoint on English
+or any other language, on code correctness, on multi-turn conversations,
+on tool calling (the tool column is a structural zero), on instruction
+following, on long context beyond the 16384-token serving window, on
+safety behaviour, or with thinking enabled — which is how this model
+family is normally used. The requant rewrites the dense linears and
+lm_head, so those are exactly the places a regression could hide from
+these four probes. If you depend on any of them, measure it yourself
+before adopting this checkpoint; requant/verify.py takes a different
+prompt set with one flag.
+
+### Route g, if you want the smaller quality delta
+
+`requant/requant.py --target g` writes a more conservative
+requantization: on pair 2 over RDMA with MTP at K=2 and the same
+64-prompt ruler, route g measured 29.46 tok/s at a perplexity ratio of
+0.999, against route h's 34.47 tok/s at 1.051 on that same pair,
+transport, K and ruler. I released h because the gate's job is to
+bound the quality delta, not to minimise it, and 1.051 is inside the
+bound I declared before measuring. If you would rather spend the speed
+on the smaller delta, g is the one flag change.
+
+## How to reproduce
+
+The full runbook — prerequisites, exact commands, expected wall times,
+and disk needs — is in [AGENTS.md](AGENTS.md). In short: requantize
+the checkpoint with `requant/requant.py --target h`, build the RDMA
+image and the overlays, serve with `serve/start-head.sh` and
+`serve/start-worker.sh`, gate with `requant/verify.py check`, then
+measure with `bench/measure.py`. The prompt sets are described in
+[bench/README.md](bench/README.md).
+
+## Reproduced from the published runbook
+
+Every number above was measured by the person who wrote the recipe, on
+the machine the recipe was written on — the weakest part of any speed
+claim. So I ran the recipe back from the outside: an empty working
+directory on the other node pair, the repository skeleton as published,
+[AGENTS.md](AGENTS.md) and `scripts/agent-run.sh` as the only
+instructions, and one of that pair's own nodes as the operator node.
+The run built the RDMA image and the overlays, filled `setup.env` for
+its own two nodes, brought up head and worker, ran the config gate and
+measured — nothing taken from my working tree. It skipped one step: the
+requantization itself. The released route-h checkpoint already sitting
+on that pair stood in for the download, so what this test reproduces is
+everything from the checkpoint to the measured tokens, not the weight
+rewrite.
+
+- 37.08 tok/s on the run's own 10-prompt smoke, TPOT median 26.5 ms,
+  acceptance 0.6177, zero failed requests.
+- Against the 35.09 tok/s release row that is +5.7%, inside the 7% band
+  `scripts/verify-result.py` allows for the pair-to-pair offset.
+- TTFT median 0.36 s against the release row's 0.32 s — 12.5% slower,
+  outside that band. The checker reports TTFT rather than gating on it,
+  and this row is why it still gets reported.
+
+What the test does not show: the smoke pass is 10 prompts and the
+release row is 64, on a different prompt set, so the +5.7% is not a
+like-for-like comparison — a 10-prompt pass carries much more
+run-to-run spread than the ruler does. What it does show is that the
+published steps, followed on their own from an empty directory, reach a
+serving configuration in the same neighbourhood as the one I released.
+Getting there took seven fixes to the runbook and the driver, listed
+under "What did not work, and when" below; each was found by the clean
+run failing, and none of them was visible from inside my own tree.
 
 ## Speed results
 
@@ -173,9 +311,21 @@ How I count:
 - **TPOT med** — median across prompts of
   `(wall - TTFT) / (tokens - 1)`.
 - **weighted TPOT** — `sum(wall - TTFT) / sum(tokens - 1)` across
-  prompts; a token-weighted mean. The reciprocal of TPOT med is a
-  different statistic from tok/s and is not expected to match it (51.5
-  ms -> 19.42 vs the measured 18.98 on the same run).
+  prompts; a token-weighted mean. Five shipped JSONs carry this as an
+  explicit recorded field (the four release re-runs plus the route-h
+  no-draft RDMA row). For nine more rows the same quantity is
+  computable from each run's per-prompt records in the pre-sanitisation
+  factory log (not part of this repository); I did that arithmetic
+  myself and added the result to the row's shipped `results/logs/`
+  entry, noting the derivation there. The 2026-09-13 baseline has no
+  per-prompt records anywhere I could find — its own recorded figure
+  (92.5 ms) is a plain mean over prompts, a different statistic — so
+  that row, and the remaining rows I have not derived this for, read
+  `n/m` rather than mixing three definitions in one column. The
+  reciprocal of TPOT med is also a
+  different statistic from tok/s and is not expected to match it
+  (51.5 ms is 19.42 tok/s by arithmetic, against the 18.98 measured on
+  that run).
 - **accept** — spec-decode counter deltas over the pass: accepted /
   draft tokens. Mean accepted length (outputs per cycle) was 2.244 on
   the headline row: 1.244 accepted draft tokens plus the bonus token.
@@ -192,18 +342,21 @@ How I count:
 
 | checkpoint | pair | transport | K | ep | tok/s | TPOT med ms | weighted TPOT ms | TTFT med s | accept | quality gate | TTFT gate |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---|---|
-| stock | 2 | sockets | - | on | 10.75 † | 95.3 † | 92.5 † | 0.361 † | - | ref | — |
-| stock + MTP | 2 | sockets | 2 | on | 17.71 | 55.5 | 55.7 | 0.447 | 0.6128 | ref | — |
+| stock | 2 | sockets | - | on | 10.75 † | 95.3 † | n/m | 0.361 † | - | ref | — |
+| stock + MTP | 2 | sockets | 2 | on | 17.71 | 55.5 | 55.73 | 0.447 | 0.6128 | ref | — |
 | stock + MTP | 2 | sockets | 2 | off | 17.84 | 55.2 | n/m | 0.441 | 0.6183 | ref | — |
-| stock + MTP | 1 | sockets | 2 | off | 19.05 | 51.9 | 51.7 | 0.430 | 0.6175 | ref | — |
-| stock | 2 | NCCL/IB (RDMA) | - | on | 14.32 † | 69.3 † | 69.3 † | 0.349 † | - | ref | — |
-| stock + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 23.93 | 41.0 | 41.2 | 0.366 | 0.6137 | ref | — |
-| route h | 1 | sockets | - | on | 18.98 | 51.5 | 52.1 | 0.330 | - | PASS (PPL x1.051) | verified on sockets |
-| route h + MTP | 1 | sockets | 2 | on | 24.01 | 40.7 | 41.0 | 0.389 | 0.6221 | PASS (PPL x1.051) | verified on sockets |
-| **route h + MTP** | **1** | **NCCL/IB (RDMA)** | **2** | **on** | **35.09** | **27.9** | **27.9** | **0.320** | **0.6221** | **PASS (PPL x1.051)** | **verified on sockets; not re-run under RDMA** |
-| route g + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 29.46 | 33.3 | 33.3 | 0.340 | 0.6182 | PASS (PPL x0.999) | verified on sockets; not re-run under RDMA |
-| route h | 1 | NCCL/IB (RDMA) | 0/1/3/4 | on | pending |  |  |  |  |  |  |
-| route h + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 34.47 | 28.2 | 28.4 | 0.313 | 0.6221 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
+| stock + MTP | 1 | sockets | 2 | off | 19.05 | 51.9 | 51.77 | 0.430 | 0.6175 | ref | — |
+| stock | 2 | NCCL/IB (RDMA) | - | on | 14.32 † | 69.3 † | 69.29 | 0.349 † | - | ref | — |
+| stock | 1 | NCCL/IB (RDMA) | - | on | 14.39 | 69.0 | n/m | 0.293 | - | ref | — |
+| stock + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 23.93 | 41.0 | 41.17 | 0.366 | 0.6137 | ref | — |
+| route h | 1 | sockets | - | on | 18.98 | 51.5 | 52.12 | 0.330 | - | PASS (PPL x1.051) | verified on sockets |
+| route h | 1 | NCCL/IB (RDMA) | - | on | 27.15 | 35.7 | 36.4 | 0.269 | - | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
+| route h + MTP | 1 | sockets | 2 | on | 24.01 | 40.7 | 40.96 | 0.389 | 0.6221 | PASS (PPL x1.051) | verified on sockets |
+| **route h + MTP** | **1** | **NCCL/IB (RDMA)** | **2** | **on** | **35.09** | **27.9** | **27.92** | **0.320** | **0.6221** | **PASS (PPL x1.051)** | **verified on sockets; not re-run under RDMA** |
+| route g + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 29.46 | 33.3 | 33.35 | 0.340 | 0.6182 | PASS (PPL x0.999) | verified on sockets; not re-run under RDMA |
+| route h + MTP | 1 | NCCL/IB (RDMA) | 1 | on | 34.28 | 28.6 | n/m | 0.304 | 0.7979 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
+| route h + MTP | 1 | NCCL/IB (RDMA) | 3 | on | 31.98 | 30.8 | n/m | 0.331 | 0.483 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
+| route h + MTP | 2 | NCCL/IB (RDMA) | 2 | on | 34.47 | 28.2 | 28.43 | 0.313 | 0.6221 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
 | route h + MTP | 1 | NCCL/IB (RDMA) | 2 | on | 34.48 | 28.3 | 28.4 | 0.317 | 0.6193 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
 | route h + MTP | 1 | sockets | 2 | on | 23.75 | 41.2 | 41.4 | 0.394 | 0.6213 | PASS (PPL x1.051) | verified on sockets |
 | route h + MTP | 1 | NCCL/IB (RDMA) | 2 | on | 35.12 | 27.9 | 27.9 | 0.313 | 0.6193 | PASS (PPL x1.051) | verified on sockets; not re-run under RDMA |
@@ -217,6 +370,27 @@ How I count:
 † I ran these rows with C=1 over the first 8 prompts of the ruler, not
 all 64.
 
+The route-h no-draft leg of the decomposition landed on 2026-09-16
+(27.15 tok/s, the row above). The one `pending` row left is the stock
+checkpoint with no draft, on pair 1 over RDMA, on the same 64-prompt
+ruler — the denominator a speedup factor for the requant would need. It
+is being measured now.
+
+<!-- pending: stock-rdma-nodraft -->
+
+There is no "vs stock" column in this table on purpose: the only stock
+no-draft rows I have were taken on a different pair, a different
+transport and 8 prompts instead of 64, so any ratio against them would
+fold three condition changes into one number.
+
+K is not settled either. On pair 1 over RDMA with the 64-prompt ruler,
+K=1 measured 34.28 tok/s and K=2 measured 34.48 / 35.09 / 35.12 across
+three passes; run-to-run spread on identical configs is about 2%, so
+this experiment does not separate K=1 from K=2. K=3 measured 31.98 on
+the same pair and transport, and acceptance falls from 0.6193 at K=2
+to 0.483 at K=3. I ship K=2 because it is the best of the values I
+measured, not because K=1 was ruled out.
+
 Repeat measurements (both landed 2026-09-16):
 
 - **Second pair** — the same headline configuration on the other node
@@ -227,26 +401,201 @@ Repeat measurements (both landed 2026-09-16):
   prefix caching disabled and warm-up counted separately: 34.48 and
   35.12 tok/s over RDMA, 23.75 and 24.35 tok/s over TCP. The RDMA
   re-runs sit within ~2% of the original 35.09.
-- Per-pass GPU telemetry (nvidia-smi at 2 s on both nodes; SM clock
-  median / power median–max / temp max): the 34.48 pass — 2190 MHz,
-  24.9–27.1 W, 68 °C; the 23.75 pass — 2190 MHz, 20.5–23.6 W, 64 °C;
-  the 35.12 pass — 2190 MHz, 24.5–26.7 W, 65 °C; the 24.35 pass —
-  2190 MHz, 20.6–24.3 W, 65 °C. The second-pair repeat captured no
-  telemetry (n/m).
+- Per-pass GPU telemetry, sampled with `nvidia-smi` every 2 s on both
+  nodes for the duration of each pass (523–772 samples per node). SM
+  clock was 2190 MHz in every sample of all four passes. Power stayed
+  in a 20–27 W band and GPU temperature reached at most 68 °C across
+  the four passes; I did not keep a per-pass breakdown of where in
+  that band each pass sat. These per-sample CSVs are not part of this
+  repository; the four re-run JSONs under `results/logs/` are.
 
-Still pending:
+The headline run (pair 1, 2026-09-16) produced 32407 completion tokens
+over 923.43 s of wall time with zero failed requests; the shipped log
+records totals only, not per-request finish reasons, but I counted
+them from the pre-sanitisation factory log and the headline run's own
+split is 61 `length` / 3 `stop` over its 64 prompts. The four release
+re-runs record the same field directly and land on the identical split
+— i.e. most prompts ran into the 512-token cap rather than stopping on
+their own. On the stock checkpoint the C=32 aggregate was
+95.08 tok/s over sockets (pair 2, 64 prompts) and 109.03 tok/s over
+RDMA (pair 2, 64 prompts); no C=32 row exists for route h yet.
 
-- **K sweep** — the full K=0/1/3/4 sweep on route h + RDMA against the
-  same checkpoint, queued in both K orders for warm-up/order effects.
-  A first sweep-A pass has already landed — K=1 gave 34.28 tok/s and
-  K=3 gave 31.98 on pair 1 over RDMA — but until the full sweep is
-  verified K=2 remains the best of the values I measured, not a proven
-  optimum.
+### By prompt kind
 
-The headline run (pair 1, 2026-09-16): 32407 completion tokens over
-923.43 s of wall, zero failed requests, finish reasons 61 `length` / 3
-`stop`. C=32 aggregate on the stock checkpoint was 94.66 tok/s (sockets)
-and 109.03 tok/s (RDMA); no C=32 row exists for route h yet.
+The 64-prompt ruler is prose. To see how much the kind of text moves the
+number I ran separate 32-prompt sets on the released configuration: pair
+1, NCCL/IB (RDMA), route h + MTP K=2, `temperature=0`, expert parallel
+on, each set measured C=1 as its own pass. These sets are not the
+64-prompt ruler and not subsets of it — different prompts, 32 instead of
+64 — so they stay out of the table above.
+
+- prose, `max_tokens=512`: 34.87 tok/s, TPOT median 28.1 ms, TTFT
+  median 0.319 s.
+- prose, `max_tokens=128`: 32.80 tok/s, TPOT median 28.9 ms, TTFT
+  median 0.293 s.
+- code, `max_tokens=512`: 38.20 tok/s, TPOT median 25.6 ms, TTFT
+  median 0.342 s.
+- structured output and JSON: measuring.
+
+Structured prompts ran at 34.84 tok/s at 512 tokens and 33.51 at 128 (TPOT median 27.4 and 27.6 ms); JSON-shaped prompts ran at 35.35 and 33.30 (25.0 and 25.2 ms); code at 128 tokens ran at 36.08 (25.1 ms). All four kinds sit between 32.8 and 38.2 tok/s on this configuration, with zero failed prompts in every pass.
+
+The prose reading, 34.87 tok/s, sits on the 35.09 of the 64-prompt ruler
+under the same serving configuration — the agreement I would want
+between two different prose sets. An earlier pass over this same
+32-prompt prose set, same configuration, read 28.88 tok/s: it ran inside
+a slow window, with weighted TPOT at 34.0 ms against 27.9 ms on the
+headline pass while acceptance stayed put (0.6189 against 0.6221), so
+the difference is time per decode cycle and not the draft. Both readings
+stay on record. The spread between them is what one 32-prompt pass can
+do on this machine when something else is touching it, and it is wider
+than the ~2% the 64-prompt ruler shows across re-runs.
+
+## What did not work, and when
+
+Measured on the same ruler; listed so the search space is on record.
+
+<!-- failures:start -->
+
+| item | what | cause | date |
+|---|---|---|---|
+| **moe-dsl-kernel-overlay** | Three successive failures. First, the patched kernel path was dead code: the backend is gated to device family 100 and never instantiates on sm_121, so an apparent -4 ms TPOT delta was run-to-run noise. Second, after re-hooking the class the deployment selects, every call failed a static eligibility check (the model's SwiGLU clamp limit) and silently fell back to stock: 256 calls, zero dispatches. Third, a host-side cute.make_layout call raised a TypeError at first use. | Instrumented, then fixed or abandoned each time; the overlay is not in the released config. | 2026-09-15 |
+| **fp8-dense** | FP8-quantized dense linear variants ran slower than W4A16 NVFP4 on this stack (pair 1, sockets, 64-prompt ruler): no draft 9.3 tok/s / TPOT 107.1 ms against W4A16's 18.98 / 51.5; with the MTP K=2 draft 16.49 tok/s / TPOT 59.7 ms against W4A16's 24.01 / 40.7. | Measured slower; not adopted. | 2026-09-15 |
+| **mtp-k-ge-3** | K=3 gave 19.39 tok/s and K=4 gave 17.44 tok/s vs K=2's 19.83 on an earlier requant route (sockets, pair 1); on stock (pair 2, sockets, expert parallel on), K=4 gave 15.2 and K=5 gave 13.1. | Per-position acceptance drops more quickly than the extra draft tokens save steps. K=2 was the best of the K values measured on this route; on route h + RDMA a first sweep-A pass measured K=1 at 34.28 and K=3 at 31.98 tok/s, and the full same-checkpoint sweep in both K orders is still pending. | 2026-09-16 |
+| **ep-off** | Removing --enable-expert-parallel gained ~0.7% (pair 2, sockets, MTP K=2, 64-prompt ruler: 17.71 -> 17.84 tok/s). | Inside the pair-to-pair offset; not a lever. | 2026-09-15 |
+| **eager-mode** | --enforce-eager speeds up the stock single-stream step by 7.0 ms on the 256-step attribution totals (86.95 vs 93.98 ms) and by 13.4 ms on the C=1 TPOT median (77.5 vs 90.9 ms), but the gain mostly does not carry into MTP decode. | The step it speeds up is not the step speculation runs. Not adopted. | 2026-09-15 |
+| **k4-k5-boot-oom** | K=4 and K=5 failed to boot on the STOCK checkpoint at these memory settings (128 GB unified memory per node, max seq len 16384): the engine refused to start because the KV cache left after the speculator's CUDA-graph capture was smaller than one request needs. The route-h checkpoint booted at K=1 and K=3 on the same hardware (READY in 885-918 s); a route-h + RDMA attempt at K=4 also failed to boot at these settings. | Speculator graph capture grows with K and is taken out of the KV budget. One earlier K=4 attempt was also killed externally by an orphaned pipeline's cleanup, which masked the real cause for a while. | 2026-09-15 |
+| **requant-loader-write** | A fused-KDA write missing the NVFP4 global scale produced KeyError ...weight_scale_2 at load. | Writer bug; now covered by verify.py config and the kda-quant overlay. | 2026-09-15 |
+| **nccl-ll-symm-ar** | NCCL low-latency envs and symmetric-memory all-reduce booted but returned empty response bodies or died under concurrency. | Broken output path; unsafe, not adopted. | 2026-09-15 |
+| **ev-ordering** | The expensive drafter-training data chain (extraction, two generation passes, conversion; ~5 h of wall time on the 2-GPU pair, ~10 GPU-hours) was queued ahead of the cheap K sweep; the trained drafter's holdout top-1 came out ~0.08, and the sweep showed K=2 was already the best of the measured values. | Sequenced by pipeline momentum instead of expected information per GPU-hour. | 2026-09-15 |
+
+<!-- failures:end -->
+
+Seven more failures came from the clean-room run above, all in the
+runbook and the driver rather than in the model, the transport or the
+checkpoint — the kind that only shows up when the instructions are
+followed literally from an empty directory. Five of them: a `mktemp`
+template the runbook's own shell rejected (fewer than three trailing
+`X`); a serve config the driver wrote but never sourced; files an
+in-image helper created as root, into a directory the next step then
+could not write; the case where the operator node and the serving head
+are the same machine, which the script handled by trying to SSH to
+itself; and shell quoting that ate the quotes around a JSON argument.
+Each is fixed in the files published here, not in the run.
+
+Timeline of the measurements above and below:
+
+| date | milestone |
+|---|---|
+| 2026-09-13 | stock baseline on pair 2: 10.75 tok/s C=1 |
+| 2026-09-15 | official MTP at K=2 on stock: 19.05 tok/s on pair 1, 17.84 on pair 2; most alternative levers failed in this window |
+| 2026-09-16 | route h requant, RDMA image, headline 35.09 tok/s on pair 1 |
+
+## Why I started from the NVIDIA NVFP4 checkpoint
+
+The official `nvidia/GLM-5.3-Flash-NVFP4` release is quantized with
+NVIDIA's own toolchain, and its model card publishes BF16-vs-NVFP4
+benchmark numbers that show essentially no accuracy loss (model card
+revision `09b04e5e74bca08ca8549fc736d4cdd8624bfde3`): GPQA Diamond
+0.9217 -> 0.9211, SciCode 0.5621 -> 0.5769, MMMU Pro 0.7688 -> 0.7630,
+AA-LCR 0.7100 -> 0.7106, IFBench 0.6130 -> 0.6054, Terminal-Bench 2.1
+0.8258 -> 0.8315. That makes it a trustworthy base. My route h only
+extends the same 4-bit treatment to the layers the official release left
+in BF16, and I keep the gate numbers next to the speed numbers so the
+trade-off stays visible. Those card figures come from standard public
+benchmarks and are not comparable with the eval-200 totals above, which
+are scored by this repository's own strict grader.
+
+## What is left for a v2
+
+This is a list of what I know is unfinished, not a roadmap. I am not
+predicting how much any of it is worth; I will publish a number when I
+have measured one.
+
+**Speed, still open**
+
+- My own NVFP4 MoE kernel. It has never actually run in a served
+  request: three attempts hooked a class the GB10 build does not
+  instantiate, then the wrong class, then a host-side call that threw
+  and silently disabled the overlay. Until it runs with a proof-of-life
+  line in the engine log, there is nothing to measure.
+- All-reduce. Cross-node peer wait was 20.8 ms of an ~87 ms decode step
+  in the one step attribution I ran (eager, stock, single stream, over
+  sockets). I have not repeated that attribution under RDMA — an
+  attempt to do so died at boot and produced no step data — so I do
+  not know how much of that wait carries over onto the fast transport;
+  the higher tok/s the RDMA rows show is a whole-pass measurement, not
+  an attribution to this bucket. I have not tried to reduce the number
+  of collectives itself either.
+- A trained draft model. The checkpoint's own MTP head accepts 0.62 of
+  the tokens it proposes. A draft trained on this model's own outputs
+  could accept more, which shortens every cycle. My first attempt is
+  data-starved — 594 training records, about 301k tokens against a
+  ~3M-token recipe target, holdout per-slot hit 0.03-0.08 — and needs
+  roughly ten times the data before it is worth measuring.
+- Speculation depth. K=1 (34.28) and K=2 (35.09) are not separated by
+  this experiment's run-to-run spread, and K=3 and K=4 are slower. A
+  better draft would change where that optimum sits.
+
+**Quality, not yet measured**
+
+- English and other languages. Every probe here is Japanese.
+- Code correctness. Code prompts appear in the speed table and nowhere
+  in the quality table.
+- Multi-turn conversations, tool calling, instruction following, long
+  context beyond the 16384-token serving window, safety behaviour, and
+  the model with thinking enabled — which is how this family is normally
+  used.
+- Perplexity on a larger corpus, with a confidence interval. The current
+  probe is eight sentences and the code does not keep the per-token
+  values, so the ratio has no interval attached to it.
+- A paired test on eval-200. The grader discards per-item results, so
+  the same 150 items cannot be tested as pairs, which is what they are.
+
+**Reproduction, not yet complete**
+
+- The clean-room run skipped the download and the requant themselves:
+  the weights were already on the node. The full path, from an empty
+  disk through the ~204 GB download and the ~30-minute requant, has not
+  been run end to end by anyone.
+- That run used 10 prompts, not the 64 the reference numbers come from.
+
+**What I already know does not work.** FP8 for the dense linears, expert
+parallelism off, K of 3 or more on prose, and forcing eager mode. The
+numbers and the conditions they were measured under are in the failure
+table above; that is the place to look before retrying any of them.
+
+## The part that does not end
+
+Making the model fast took a day of experiments. Making the result
+publishable took longer, and it is the part I was not ready for.
+
+Every layer of checking I added found something, and each finding was
+real. A machine check on wording and leaks passed on the first run, so I
+added a check that traced every number in the text back to a log —
+fourteen of them could not be traced. I fixed those, then had a reader
+with no context read the whole thing, and the headline comparison turned
+out to divide two numbers measured on different hardware, over a
+different transport, on a different number of prompts. I fixed that,
+then checked the shipped evidence against the tables and found a
+throughput figure that was the wrong row of its own log. I fixed that,
+then audited the quantization script against what the text claimed, and
+found a helper that would silently build a broken draft if you pointed
+it at the wrong checkpoint. I fixed that, then had the quality claims
+read adversarially, and learned that the grader for one of the four
+categories rewards a model for hedging — which is the direction my
+numbers had moved.
+
+None of those were careless. Each one needed a different kind of
+looking. And the pattern was always the same: add a check, find
+something, fix it, and the fix is small. The checking is not what costs;
+the discovery that there is always one more layer is what costs.
+
+At some point the honest move is to stop, not because the work is
+finished but because the next layer is worth less than shipping. I
+stopped here. The things I know are not measured are listed above, in
+their own section, and the things I have not thought to check are the
+reason this is v1 and not final. If you find one, that is the system
+working, and I would rather hear it than not.
 
 ## About the name
 
@@ -254,18 +603,22 @@ Wabi (侘び) is the Japanese sense of accepting what is imperfect or
 plain and finding richness in it; this release is a work in progress
 that I publish as it is, improvements included when they are measured.
 
-## Stage 2
+## What comes next
 
-A faster configuration may follow.
+The remaining pending row, the rest of the per-kind sets, then the full
+K sweep in both K orders; if a configuration beats 35.09 tok/s on this
+ruler and passes the same gate, it goes out as v2.
 
 ## Files
 
 ```
 AGENTS.md                   reproduction runbook (prereqs, commands, times)
 CONTRIBUTORS.md             who worked on this
-requant/requant.py          weight-only repack, targets a-e/g/h
+LICENSE / NOTICE            Apache-2.0 and attribution
+setup.env.example           per-node paths and image tags (copy to setup.env)
+requant/requant.py          weight-only NVFP4 quantization, targets a-e/g/h
 requant/verify.py           config verifier + gate v2 (capture/check)
-requant/build-mtp-draft.py  BF16 MTP draft dir from the checkpoint
+requant/build-mtp-draft.py  BF16 MTP draft dir from the STOCK checkpoint
 overlays/                   image-source patchers (fail-closed anchors):
   patch-kda.py              restore quant_config in fused KDA members
   patch-mla.py              pass quant_config into Glm5NextMLAAttention
@@ -275,26 +628,40 @@ overlays/                   image-source patchers (fail-closed anchors):
   build-overlays.sh         fetch + patch everything into _build/
 docker/Dockerfile.nccl-ib   derived image: questing rdma-core on noble
 serve/                      start-head.sh / start-worker.sh / nccl-ib.sh
+                            + serve.env.example
+scripts/agent-run.sh        one-shot driver for the whole runbook
+scripts/verify-result.py    checks a measured row against the expected one
 bench/                      measure.py + prompts-64.jsonl + eval-200.jsonl
+                            + README.md (what the sets are)
+results/                    results.tsv, quality.tsv, failures.tsv and the
+                            sanitised per-run logs the tables cite
 tests/                      run-tests.sh (offline smoke) +
                             check-md-invariants.py (wording-only edit check)
 ```
 
 Two `eval-200.jsonl` prompts were re-quoted for publication (ASCII-safe
 quoting / reworded instruction); expected answers and grading are
-unchanged.
+unchanged. `bench/prompts-64.jsonl` ships exactly as measured — see
+[bench/README.md](bench/README.md).
+
+## Who did what
+
+The design decisions, the acceptance criteria and every measurement in
+this repository are mine. The implementation was carried out with the
+AI seats listed below and in [CONTRIBUTORS.md](CONTRIBUTORS.md); the
+gate, the runs and the numbers were checked by me before release.
 
 ## Contributors
 
 - tenhkspark (the maintainer) — the one who worried, watched, and
-  said go (anonymous handle; no real name is published).
+  said go.
 - Claude Fable 5.1 (Anthropic) — direction, experiment design,
   review and acceptance.
 - Claude Opus 5 (Anthropic) — pre-release review.
-- Astra (OpenAI, via pi) — adversarial review of the measurements
-  and the plan.
-- Devin SWE-2 (Cognition) — implementation, diagnostics, queue
-  staging, repository drafting.
+- Astra (OpenAI) — adversarial review of the measurements and the
+  plan.
+- Devin SWE-2 (Cognition) — implementation, diagnostics, running the
+  experiment queue, repository drafting.
 - GLM-5.3 (Z.ai) — implementation seat.
 - GLM-5.3-Flash (Z.ai) — implementation seat and summarisation.
 
