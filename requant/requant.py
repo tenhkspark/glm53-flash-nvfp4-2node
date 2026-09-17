@@ -450,7 +450,7 @@ def write_configs(src, dst, algo_of, keep, orig_ignore, covered, target):
         qc["ignore"] = ignore
         qc["quantized_layers"] = qlayers
         prod = qc.setdefault("producer", {})
-        prod["requant"] = "requant.py (weight-only repack)"
+        prod["requant"] = "requant.py (weight-only NVFP4 quantization)"
         # guards against reuse of a stale output directory across target
         # redefinitions (a stale dir could still pass `verify.py config`
         # under the new plan)
