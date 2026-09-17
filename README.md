@@ -229,7 +229,7 @@ single-turn, thinking off, greedy, under 2k tokens of context and one
 request at a time. I have no measurement of this checkpoint on English
 or any other language, on code correctness, on multi-turn conversations,
 on tool calling (the tool column is a structural zero), on instruction
-following, on long context — the shipped serving window is 262144
+following, on long context — the shipped serving window is 204800
 tokens, but every probe above fits in about 2k — on
 safety behaviour, or with thinking enabled — which is how this model
 family is normally used. The requant rewrites the dense linears and
@@ -298,7 +298,7 @@ run failing, and none of them was visible from inside my own tree.
 Fixed ruler: 64 Japanese prose prompts, `temperature=0`,
 `max_tokens=512`, thinking skipped via an empty assistant continuation.
 Unless noted, C=1 streams all 64 prompts sequentially with per-prompt
-TTFT/TPOT. The shipped `serve/` scripts pin `--max-model-len 262144`,
+TTFT/TPOT. The shipped `serve/` scripts pin `--max-model-len 204800`,
 `--max-num-seqs 2`, `--gpu-memory-utilization 0.88`, FP8 KV cache; the
 measured rows below ran the measurement rig instead — almost all of them
 at `--max-model-len 16384` with `--max-num-seqs 20`, the 2026-09-13
@@ -310,20 +310,20 @@ everywhere else. Each row's exact flags live in the file its
 `source_log` entry in `results/results.tsv` points to under
 `results/logs/`.
 
-**Why the shipped window is 262144 and the table is not.** 16384 was the
+**Why the shipped window is 204800 and the table is not.** 16384 was the
 rig value — the length I first got MTP up on — and it stayed pinned
 through every comparison above. Re-measured on 2026-09-17, the released
-configuration reads 35.15 tok/s at `--max-model-len 262144`
+configuration reads 35.15 tok/s at `--max-model-len 204800`
 `--max-num-seqs 2` `--gpu-memory-utilization 0.88` on the same 64-prompt
-ruler, against 35.09 at 16384 / 20 / 0.86: a 16x longer window for no
+ruler, against 35.09 at 16384 / 20 / 0.86: a 12.5x longer window for no
 change I can detect at a run-to-run spread of about 2%. What the longer
 window costs is concurrency, not speed — the shipped scripts ask for 2
 sequence slots rather than 20 because at 307200 the engine did not come
-up with 20, and I have not re-measured that ceiling at 262144. 0.89
+up with 20, and I have not re-measured that ceiling at 204800. 0.89
 utilization has been refused at boot on this pair. The requant is part
 of why the window fits: at the same 0.88 the stock checkpoint tops out
 at 156672 tokens (vLLM prints that ceiling when it refuses to start),
-while route h boots at 262144. I have not measured anything on a prompt
+while route h boots at 204800. I have not measured anything on a prompt
 near that length — see "What this gate does not measure" above.
 
 How I count:
@@ -568,7 +568,7 @@ have measured one.
 - Code correctness. Code prompts appear in the speed table and nowhere
   in the quality table.
 - Multi-turn conversations, tool calling, instruction following, long
-  context — the shipped window is 262144 tokens and nothing here was
+  context — the shipped window is 204800 tokens and nothing here was
   measured on a prompt near it — safety behaviour, and the model with
   thinking enabled, which is how this family is normally used.
 - Perplexity on a larger corpus, with a confidence interval. The current
