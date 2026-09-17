@@ -19,9 +19,10 @@ measurements on my own hardware — *enjoying the incomplete*.
 
 Every number below carries its conditions (pair, transport, prompt
 count, K, expert parallel, `max_tokens`), and every row in the speed
-table names the log it came from. One row that would make the
-comparison strictly like-for-like is still being measured; it is
-marked `pending` rather than filled in with something close.
+table names the log it came from. The stock row that makes the
+comparison strictly like-for-like landed on 2026-09-17 — 14.39 tok/s,
+pair 1 over RDMA, no draft, all 64 prompts — so the requant and the
+draft now each separate under a single condition change.
 
 The recipe has also been run back from the outside. Starting from an
 empty working directory on the other node pair, with only the published
@@ -83,31 +84,33 @@ detail here — it is one of the three levers below.
 ## What each change buys
 
 The honest decomposition needs four rows on one pair, one transport
-and one ruler. Three of them exist now; the fourth is being measured:
+and one ruler. All four are measured now:
 
 | step | what it isolates | row | measured |
 |---|---|---|---|
-| stock, no draft, RDMA | the starting point on the fast transport | pending | pending |
+| stock, no draft, RDMA | the starting point on the fast transport | pair 1, 64 prompts | 14.39 tok/s |
 | route h, no draft, RDMA | the requant alone | pair 1, 64 prompts | 27.15 tok/s |
 | route h + MTP K=2, RDMA | the draft on top of the requant | pair 1, 64 prompts | 35.09 tok/s |
 | route h + MTP K=2, sockets | the same checkpoint and draft on the slow transport | pair 1, 64 prompts | 24.01 tok/s |
 
-<!-- pending: stock-rdma-nodraft -->
-
-The middle two rows now share every condition — pair 1, NCCL/IB (RDMA),
+The first three rows now share every condition — pair 1, NCCL/IB (RDMA),
 the same 64 Japanese prose prompts, `temperature=0`, `max_tokens=512`,
-expert parallel on, thinking off — so the draft separates cleanly from
-everything else:
+expert parallel on, thinking off — so the requant and the draft each
+separate cleanly from everything else:
 
+- stock, no draft: 14.39 tok/s, TPOT median 69.0 ms, TTFT median
+  0.293 s, zero failed requests.
 - route h, no draft: 27.15 tok/s, TPOT median 35.7 ms, weighted TPOT
   36.4 ms, TTFT median 0.269 s, zero failed requests.
 - route h + MTP K=2: 35.09 tok/s, TPOT median 27.9 ms, TTFT median
   0.320 s, acceptance 0.6221, zero failed requests.
 
-35.09 / 27.15 = 1.29, so on this configuration the draft is worth about
-1.29x on top of the requantized checkpoint. It is the one ratio in this
-README taken across a single condition change; every other pair of rows
-differs in more than one thing, so I do not divide them.
+27.15 / 14.39 = 1.89 and 35.09 / 27.15 = 1.29, so on this configuration
+the requant is worth about 1.89x and the draft about 1.29x on top of
+it. These are the only two ratios in this README taken across a single
+condition change; every other pair of rows differs in more than one
+thing, so I do not divide them. Each side of both ratios is a single
+pass, and run-to-run spread on identical configs is about 2%.
 
 What I can say today, each within one pair and one transport:
 
@@ -120,14 +123,13 @@ What I can say today, each within one pair and one transport:
   over sockets against 35.09 over RDMA; the two publication re-runs
   read 23.75 / 24.35 over sockets and 34.48 / 35.12 over RDMA on the
   same pair, so the transport gap reproduces.
-- **The requant.** Still no same-condition pair. The requant's own row
-  is now measured on pair 1 over RDMA (27.15 tok/s, no draft), but the
-  stock row it needs as a denominator is not: the stock reference I
-  have was taken on pair 2, over sockets, over the first 8 prompts of
-  the ruler at `--max-model-len 131072` (10.75 tok/s), so dividing by
-  it would mix three condition changes at once. That is what the
-  remaining pending row is for; until it lands I print no factor for
-  the requant.
+- **The requant.** Stock against route h, pair 1, 64 prompts, over
+  RDMA with no draft on either side and expert parallel on in both:
+  14.39 tok/s stock against 27.15 route h (x1.89). The older stock
+  reference — pair 2, sockets, the first 8 prompts of the ruler at
+  `--max-model-len 131072`, 10.75 tok/s — is not a denominator for
+  this; dividing by it would mix three condition changes at once, so I
+  do not.
 
 ## What it costs
 
@@ -227,7 +229,8 @@ single-turn, thinking off, greedy, under 2k tokens of context and one
 request at a time. I have no measurement of this checkpoint on English
 or any other language, on code correctness, on multi-turn conversations,
 on tool calling (the tool column is a structural zero), on instruction
-following, on long context beyond the 16384-token serving window, on
+following, on long context — the shipped serving window is 307200
+tokens, but every probe above fits in about 2k — on
 safety behaviour, or with thinking enabled — which is how this model
 family is normally used. The requant rewrites the dense linears and
 lm_head, so those are exactly the places a regression could hide from
@@ -295,14 +298,33 @@ run failing, and none of them was visible from inside my own tree.
 Fixed ruler: 64 Japanese prose prompts, `temperature=0`,
 `max_tokens=512`, thinking skipped via an empty assistant continuation.
 Unless noted, C=1 streams all 64 prompts sequentially with per-prompt
-TTFT/TPOT. The shipped `serve/` scripts pin `--max-model-len 16384`,
-`--gpu-memory-utilization 0.85`, FP8 KV cache; the measured rows ran
-variants — the 2026-09-13 stock baseline used `--max-model-len 131072`,
-the c1pair and route-h rows ran `--gpu-memory-utilization 0.86`, and
-expert parallel was off on the two stock + MTP rows marked `ep` = `off`
-(17.84 and 19.05 tok/s) and on everywhere else. Each row's exact flags
-live in the file its `source_log` entry in `results/results.tsv` points
-to under `results/logs/`.
+TTFT/TPOT. The shipped `serve/` scripts pin `--max-model-len 307200`,
+`--max-num-seqs 2`, `--gpu-memory-utilization 0.88`, FP8 KV cache; the
+measured rows below ran the measurement rig instead — almost all of them
+at `--max-model-len 16384` with `--max-num-seqs 20`, the 2026-09-13
+stock baseline at `--max-model-len 131072` with 32 slots and the pair-2
+stock RDMA row at 16384 with 32 slots; the c1pair and route-h rows ran
+`--gpu-memory-utilization 0.86`, and expert parallel was off on the two
+stock + MTP rows marked `ep` = `off` (17.84 and 19.05 tok/s) and on
+everywhere else. Each row's exact flags live in the file its
+`source_log` entry in `results/results.tsv` points to under
+`results/logs/`.
+
+**Why the shipped window is 307200 and the table is not.** 16384 was the
+rig value — the length I first got MTP up on — and it stayed pinned
+through every comparison above. Re-measured on 2026-09-17, the released
+configuration reads 35.07 tok/s at `--max-model-len 307200`
+`--max-num-seqs 2` `--gpu-memory-utilization 0.88` on the same 64-prompt
+ruler, against 35.09 at 16384 / 20 / 0.86: an 18.75x longer window for
+no change I can detect at a run-to-run spread of about 2%. What the
+longer window costs is concurrency, not speed — at 307200 the engine
+does not come up with 20 sequence slots, so the shipped scripts ask for
+2, and 0.89 utilization has been refused at boot on this pair. The
+requant is part of why the window fits: at the same 0.88 the stock
+checkpoint tops out at 156672 tokens (vLLM prints that ceiling when it
+refuses to start), while route h boots at 307200. I have not measured
+anything on a prompt near that length — see "What this gate does not
+measure" above.
 
 How I count:
 
@@ -371,17 +393,17 @@ How I count:
 all 64.
 
 The route-h no-draft leg of the decomposition landed on 2026-09-16
-(27.15 tok/s, the row above). The one `pending` row left is the stock
-checkpoint with no draft, on pair 1 over RDMA, on the same 64-prompt
-ruler — the denominator a speedup factor for the requant would need. It
-is being measured now.
+(27.15 tok/s) and the stock no-draft leg on 2026-09-17 (14.39 tok/s),
+both on pair 1 over RDMA on the same 64-prompt ruler, so the
+denominator a speedup factor for the requant needs is measured:
+27.15 / 14.39 = 1.89.
 
-<!-- pending: stock-rdma-nodraft -->
-
-There is no "vs stock" column in this table on purpose: the only stock
-no-draft rows I have were taken on a different pair, a different
-transport and 8 prompts instead of 64, so any ratio against them would
-fold three condition changes into one number.
+There is no "vs stock" column in this table on purpose: a column would
+invite a ratio on every row, and most of the stock rows here were taken
+on a different pair, a different transport or 8 prompts instead of 64,
+so those ratios would fold three condition changes into one number. The
+two pairs that do differ in a single condition are named in the
+paragraph above and in "What each change buys".
 
 K is not settled either. On pair 1 over RDMA with the 64-prompt ruler,
 K=1 measured 34.28 tok/s and K=2 measured 34.48 / 35.09 / 35.12 across
@@ -418,7 +440,10 @@ re-runs record the same field directly and land on the identical split
 — i.e. most prompts ran into the 512-token cap rather than stopping on
 their own. On the stock checkpoint the C=32 aggregate was
 95.08 tok/s over sockets (pair 2, 64 prompts) and 109.03 tok/s over
-RDMA (pair 2, 64 prompts); no C=32 row exists for route h yet.
+RDMA (pair 2, 64 prompts); both of those passes ran with 32 sequence
+slots, which the shipped `--max-num-seqs 2` cannot reproduce, so read
+them as rig numbers rather than as what the released scripts do. No
+C=32 row exists for route h yet.
 
 ### By prompt kind
 
@@ -435,7 +460,8 @@ on, each set measured C=1 as its own pass. These sets are not the
   median 0.293 s.
 - code, `max_tokens=512`: 38.20 tok/s, TPOT median 25.6 ms, TTFT
   median 0.342 s.
-- structured output and JSON: measuring.
+- structured output and JSON: measured too; their readings are in the
+  paragraph below, without TTFT medians.
 
 Structured prompts ran at 34.84 tok/s at 512 tokens and 33.51 at 128 (TPOT median 27.4 and 27.6 ms); JSON-shaped prompts ran at 35.35 and 33.30 (25.0 and 25.2 ms); code at 128 tokens ran at 36.08 (25.1 ms). All four kinds sit between 32.8 and 38.2 tok/s on this configuration, with zero failed prompts in every pass.
 
@@ -542,9 +568,9 @@ have measured one.
 - Code correctness. Code prompts appear in the speed table and nowhere
   in the quality table.
 - Multi-turn conversations, tool calling, instruction following, long
-  context beyond the 16384-token serving window, safety behaviour, and
-  the model with thinking enabled — which is how this family is normally
-  used.
+  context — the shipped window is 307200 tokens and nothing here was
+  measured on a prompt near it — safety behaviour, and the model with
+  thinking enabled, which is how this family is normally used.
 - Perplexity on a larger corpus, with a confidence interval. The current
   probe is eight sentences and the code does not keep the per-token
   values, so the ratio has no interval attached to it.
@@ -605,9 +631,9 @@ that I publish as it is, improvements included when they are measured.
 
 ## What comes next
 
-The remaining pending row, the rest of the per-kind sets, then the full
-K sweep in both K orders; if a configuration beats 35.09 tok/s on this
-ruler and passes the same gate, it goes out as v2.
+The rest of the per-kind sets, then the full K sweep in both K orders;
+if a configuration beats 35.09 tok/s on this ruler and passes the same
+gate, it goes out as v2.
 
 ## Files
 
