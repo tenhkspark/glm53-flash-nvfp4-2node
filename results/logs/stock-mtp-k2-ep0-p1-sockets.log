@@ -1,5 +1,6 @@
 # stock + MTP K=2, pair 1, sockets, expert-parallel OFF (ep=0) — measured 2026-09-15 JST
 # serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86; MTP draft K=2; expert parallel disabled
 # sanitised measure.py LEVEL/ACCEPT excerpt
+# weighted TPOT (sum(wall-ttft)/sum(tokens-1) across the C=1 pass's 64 per-prompt rows, computed from the pre-sanitisation factory log; the per-prompt rows themselves are stripped from this excerpt): 51.77 ms
 LEVEL label=c1pair-K2 C=1 prompts=64 tok/s=19.05 tokens=32395 wall=1700.65s fails=0 tpot_med_ms=51.9 ttft_med_s=0.43
 ACCEPT label=c1pair-K2 d_accepted=17890.0 d_draft_tokens=28972.0 d_drafts=14486.0 acceptance=0.6175 mean_accepted_len=2.235

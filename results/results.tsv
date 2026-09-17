@@ -1,20 +1,23 @@
-label	date	pair	transport	route	k	ep	ruler	c1_tok_s	tpot_med_ms	tpot_w_ms	ttft_med_s	acceptance	gate_ppl_ratio	eval200_delta	eval13	source_log	c32_tok_s	vs_stock
-stock baseline (no spec)	2026-09-13	2	sockets	stock	-	on	8	10.75 †	95.3 †	92.5 †	0.361 †		ref			logs/stock-baseline-p2-sockets.json	94.66	x1.00
-c1pair	2026-09-15	2	sockets	stock	2	on	64	17.71	55.5	55.7	0.447	0.6128	ref			logs/stock-mtp-k2-p2-sockets.log		x1.65
-c1pair-ep0-graphs	2026-09-15	2	sockets	stock	2	off	64	17.84	55.2		0.441	0.6183	ref			logs/stock-mtp-k2-ep0-p2-sockets.log		x1.66
-c1pair	2026-09-15	1	sockets	stock	2	off	64	19.05	51.9	51.7	0.430	0.6175	ref			logs/stock-mtp-k2-ep0-p1-sockets.log		x1.77
-stock-rdma	2026-09-16	2	NCCL/IB (RDMA)	stock	-	on	8	14.32 †	69.3 †	69.3 †	0.349 †		ref			logs/stock-p2-rdma.log	109.03	
-stock-mtp-rdma	2026-09-16	2	NCCL/IB (RDMA)	stock	2	on	64	23.93	41.0	41.2	0.366	0.6137	ref			logs/stock-mtp-k2-p2-rdma.log		x2.23
-requant-h1	2026-09-16	1	sockets	h	-	on	64	18.98	51.5	52.1	0.330		PASS (PPL x1.051)	+0.005		logs/route-h-p1-sockets-nodraft.json		x1.77
-requant-h1+mtp	2026-09-16	1	sockets	h	2	on	64	24.01	40.7	41.0	0.389	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p1-sockets.json		x2.23
-*requant-h1+mtp-rdma	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	35.09	27.9	27.9	0.320	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p1-rdma.log		x3.26
-requant-g1+mtp-rdma	2026-09-16	2	NCCL/IB (RDMA)	g	2	on	64	29.46	33.3	33.3	0.340	0.6182	PASS (PPL x0.999)			logs/route-g-mtp-k2-p2-rdma.log		
-requant-h1-rdma-ksweep		1	NCCL/IB (RDMA)	h	0/1/3/4	on	64	pending							logs/route-h-rdma-ksweep-status.log			
-requant-h1+mtp-rdma-p2	2026-09-16	2	NCCL/IB (RDMA)	h	2	on	64	34.47	28.2	28.4	0.313	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p2-rdma.log		x3.21
-h-pubgrade-rdma1	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	34.48	28.3	28.4	0.317	0.6193	PASS (PPL x1.051)	+0.005		logs/route-h-pubgrade-rdma1.json		x3.21
-h-pubgrade-tcp2	2026-09-16	1	sockets	h	2	on	64	23.75	41.2	41.4	0.394	0.6213	PASS (PPL x1.051)	+0.005		logs/route-h-pubgrade-tcp2.json		x2.21
-h-pubgrade-rdma3	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	35.12	27.9	27.9	0.313	0.6193	PASS (PPL x1.051)	+0.005		logs/route-h-pubgrade-rdma3.json		x3.27
-h-pubgrade-tcp4	2026-09-16	1	sockets	h	2	on	64	24.35	40.4	40.4	0.39	0.6174	PASS (PPL x1.051)	+0.005		logs/route-h-pubgrade-tcp4.json		x2.27
-requant-c+mtp	2026-09-15	1	sockets	c	2	on	64	19.83	49.6		0.435	0.6218	PASS			logs/route-c-mtp-k2-p1-sockets.log		x1.84
-requant-c+mtp	2026-09-16	1	sockets	c	3	on	64	19.39	50.9		0.461	0.4925	PASS			logs/route-c-mtp-k3-p1-sockets.log		x1.8
-requant-c+mtp-k4	2026-09-16	1	sockets	c	4	on	64	17.44	56.7		0.446	0.3925	PASS			logs/route-c-mtp-k4-p1-sockets.log		x1.62
+label	date	pair	transport	route	k	ep	ruler	c1_tok_s	tpot_med_ms	tpot_w_ms	ttft_med_s	acceptance	gate_ppl_ratio	eval200_delta	eval13	source_log	c32_tok_s
+stock baseline (no spec)	2026-09-13	2	sockets	stock	-	on	8	10.75 †	95.3 †		0.361 †		ref			logs/stock-baseline-p2-sockets.json	95.08
+c1pair	2026-09-15	2	sockets	stock	2	on	64	17.71	55.5	55.73	0.447	0.6128	ref			logs/stock-mtp-k2-p2-sockets.log	
+c1pair-ep0-graphs	2026-09-15	2	sockets	stock	2	off	64	17.84	55.2		0.441	0.6183	ref			logs/stock-mtp-k2-ep0-p2-sockets.log	
+c1pair	2026-09-15	1	sockets	stock	2	off	64	19.05	51.9	51.77	0.430	0.6175	ref			logs/stock-mtp-k2-ep0-p1-sockets.log	
+stock-rdma	2026-09-16	2	NCCL/IB (RDMA)	stock	-	on	8	14.32 †	69.3 †	69.29	0.349 †		ref			logs/stock-p2-rdma.log	109.03
+stock-p1-rdma-nodraft	2026-09-17	1	NCCL/IB (RDMA)	stock	-	on	64	14.39	69.0		0.293		ref			logs/stock-p1-rdma-nodraft.log	
+stock-mtp-rdma	2026-09-16	2	NCCL/IB (RDMA)	stock	2	on	64	23.93	41.0	41.17	0.366	0.6137	ref			logs/stock-mtp-k2-p2-rdma.log	
+requant-h1	2026-09-16	1	sockets	h	-	on	64	18.98	51.5	52.12	0.330		PASS (PPL x1.051)	+0.005		logs/route-h-p1-sockets-nodraft.json	
+requant-h1-p1-rdma-nodraft	2026-09-16	1	NCCL/IB (RDMA)	h	-	on	64	27.15	35.7	36.4	0.269		PASS (PPL x1.051)	+0.005		logs/route-h-p1-rdma-nodraft.json		
+requant-h1+mtp	2026-09-16	1	sockets	h	2	on	64	24.01	40.7	40.96	0.389	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p1-sockets.json	
+*requant-h1+mtp-rdma	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	35.09	27.9	27.92	0.320	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p1-rdma.log	
+requant-g1+mtp-rdma	2026-09-16	2	NCCL/IB (RDMA)	g	2	on	64	29.46	33.3	33.35	0.340	0.6182	PASS (PPL x0.999)			logs/route-g-mtp-k2-p2-rdma.log	
+requant-h1+mtp-rdma-k1	2026-09-16	1	NCCL/IB (RDMA)	h	1	on	64	34.28	28.6		0.304	0.7979	PASS (PPL x1.051)	+0.005		logs/route-h-rdma-ksweep-status.log	
+requant-h1+mtp-rdma-k3	2026-09-16	1	NCCL/IB (RDMA)	h	3	on	64	31.98	30.8		0.331	0.483	PASS (PPL x1.051)	+0.005		logs/route-h-rdma-ksweep-status.log	
+requant-h1+mtp-rdma-p2	2026-09-16	2	NCCL/IB (RDMA)	h	2	on	64	34.47	28.2	28.43	0.313	0.6221	PASS (PPL x1.051)	+0.005		logs/route-h-mtp-k2-p2-rdma.log	
+release-rerun-rdma1	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	34.48	28.3	28.4	0.317	0.6193	PASS (PPL x1.051)	+0.005		logs/route-h-release-rerun-rdma1.json	
+release-rerun-tcp2	2026-09-16	1	sockets	h	2	on	64	23.75	41.2	41.4	0.394	0.6213	PASS (PPL x1.051)	+0.005		logs/route-h-release-rerun-tcp2.json	
+release-rerun-rdma3	2026-09-16	1	NCCL/IB (RDMA)	h	2	on	64	35.12	27.9	27.9	0.313	0.6193	PASS (PPL x1.051)	+0.005		logs/route-h-release-rerun-rdma3.json	
+release-rerun-tcp4	2026-09-16	1	sockets	h	2	on	64	24.35	40.4	40.4	0.39	0.6174	PASS (PPL x1.051)	+0.005		logs/route-h-release-rerun-tcp4.json	
+requant-c+mtp	2026-09-15	1	sockets	c	2	on	64	19.83	49.6		0.435	0.6218	PASS			logs/route-c-mtp-k2-p1-sockets.log	
+requant-c+mtp	2026-09-16	1	sockets	c	3	on	64	19.39	50.9		0.461	0.4925	PASS			logs/route-c-mtp-k3-p1-sockets.log	
+requant-c+mtp-k4	2026-09-16	1	sockets	c	4	on	64	17.44	56.7		0.446	0.3925	PASS			logs/route-c-mtp-k4-p1-sockets.log	

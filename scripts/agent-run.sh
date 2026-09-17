@@ -154,6 +154,14 @@ step_env() {
   VERIFY_TOL=${VERIFY_TOL:-0.07}
   LABEL=${LABEL:-agent-run}
   RESULTS_DIR=${RESULTS_DIR:-results}
+  # every weights path is bind-mounted into docker as -v "$dir":"$dir"
+  # (STEP 4/7/8). A relative path makes docker refuse the mount, and it
+  # would do so only after the 204 GB download — so refuse it here.
+  for v in WEIGHTS_ROOT STOCK_DIR MODEL_DIR MTP_DIR; do
+    val=${!v:-}
+    [ -n "$val" ] || continue   # MTP_DIR empty = serve without speculation
+    case "$val" in /*) ;; *) fail 1 "$v must be an absolute path (now '$val')";; esac
+  done
   case "$NCCL_IB" in 0|1) ;; *) fail 1 "NCCL_IB must be 0 or 1";; esac
   case "$MTP_K" in ''|*[!0-9]*) fail 1 "MTP_K must be a small integer (2)";;
     *) [ "$MTP_K" -le 3 ] || fail 1 "MTP_K=$MTP_K: K>=4 does not boot on 128 GB unified memory (AGENTS.md)";;
@@ -176,8 +184,17 @@ step_prereqs() {
   local h ifn
   for h in "$HEAD_HOST" "$WORK_HOST"; do
     [ "$h" = "$HEAD_HOST" ] && ifn=$HEAD_IF || ifn=$WORK_IF
-    rcheck "$h" 'cat /etc/dgx-release 2>/dev/null || lsb_release -ds 2>/dev/null || uname -srm' \
-      2 '.' "no OS release info on $h"
+    # OS: everything here was run on DGX OS (Ubuntu 24.04 derived).
+    # Another distro may still work, so a mismatch warns and continues —
+    # only the aarch64 / GB10 / RDMA checks below are hard gates.
+    local os
+    # a dead ssh leaves this empty; the hard gates below report it properly
+    os=$(rout "$h" 'cat /etc/dgx-release 2>/dev/null || lsb_release -ds 2>/dev/null || uname -srm') || true
+    if [ "$DRY" = 0 ]; then
+      printf '  %s: %s\n' "$h" "$(printf '%s' "$os" | head -1)"
+      printf '%s' "$os" | grep -Eqi 'dgx|ubuntu' \
+        || printf '  WARN: %s reports neither DGX OS nor Ubuntu (untested platform)\n' "$h"
+    fi
     rcheck "$h" 'uname -m' 2 'aarch64' "$h is not aarch64 (expected a DGX Spark GB10)"
     rassert "$h" 'docker info >/dev/null 2>&1' \
       2 "docker not usable on $h (user in the docker group? daemon up?)"
@@ -363,6 +380,11 @@ step_stage() {
   [ -z "$MTP_DIR" ] || \
     rsh "$REQUANT_HOST" "rsync -az --partial '$MTP_DIR/' '$OTHER_HOST:$MTP_DIR/'" \
     || fail 8 "draft rsync failed"
+  # the copy must be whole on the worker too: a truncated shard shows up
+  # only 13 min into the STEP 9 weight load, as a load error
+  rassert "$OTHER_HOST" "python3 -c '$WEIGHTS_CHECK' '$MODEL_DIR'" \
+    8 "weights on $OTHER_HOST are incomplete after rsync (re-run stage; rsync --partial resumes)"
+  [ "$DRY" = 1 ] || printf '  %s: weights complete at %s\n' "$OTHER_HOST" "$MODEL_DIR"
   # built overlays to the worker (built on the head in step 6)
   local hdir; hdir=$(absdir "$HEAD_HOST")
   rsh "$HEAD_HOST" "rsync -az '$hdir/overlays/_build/' '$WORK_HOST:$REMOTE_DIR/overlays/_build/'" \
@@ -391,6 +413,21 @@ write_serve_env() { # $1 = node role (head|worker); prints file path
     echo "export PORT=$PORT"
   } > "$f"
   echo "$f"
+}
+
+# Both STEP 9 waits are long (5 min for Ray, 40 min for READY) and both
+# are pointless once the head container is gone -- a bad serve flag kills
+# it ~20 s after "started glm53-head" and the poll then just burns the
+# budget. These two helpers let the loops notice and show the reason.
+head_running() { rdone "$HEAD_HOST" "docker inspect -f '{{.State.Running}}' glm53-head 2>/dev/null | grep -q true"; }
+head_log_tail() { # $1 = how many lines
+  printf '  ---- %s: docker logs glm53-head (last %s lines) ----\n' "$HEAD_HOST" "$1"
+  # never let a dead ssh / missing container abort the script here: the
+  # caller still has to print the named cause after this tail
+  { rout "$HEAD_HOST" "docker logs --tail $1 glm53-head 2>&1" 2>/dev/null \
+    | sed 's/^/  /'; } || true
+  printf '  ---- state: %s ----\n' \
+    "$(rout "$HEAD_HOST" "docker inspect -f '{{.State.Status}} exit={{.State.ExitCode}}' glm53-head 2>/dev/null" 2>/dev/null)"
 }
 
 step_serve() {
@@ -422,9 +459,14 @@ step_serve() {
       if rsh "$HEAD_HOST" "bash -c '</dev/tcp/127.0.0.1/6399' 2>/dev/null"; then
         ray=1; break
       fi
+      if ! head_running; then
+        head_log_tail 60
+        fail 9 "head container died before Ray came up on $HEAD_HOST"
+      fi
       sleep 5
     done
-    [ "$ray" = 1 ] || fail 9 "Ray head port 6399 never came up on $HEAD_HOST (docker logs glm53-head)"
+    [ "$ray" = 1 ] || { head_log_tail 60
+      fail 9 "Ray head port 6399 never came up on $HEAD_HOST"; }
   fi
   rsh "$WORK_HOST" "cd '$REMOTE_DIR' && set -a; . serve/serve.env; set +a; bash serve/start-worker.sh" \
     || fail 9 "worker start failed on $WORK_HOST"
@@ -438,9 +480,14 @@ step_serve() {
       if rsh "$HEAD_HOST" "curl -sf --max-time 5 'http://127.0.0.1:$PORT/v1/models' 2>/dev/null | grep -q GLM"; then
         ready=1; break
       fi
+      if ! head_running; then
+        head_log_tail 60
+        fail 9 "head container exited during the READY wait on $HEAD_HOST (see the log above and AGENTS.md failure modes)"
+      fi
       sleep 20
     done
-    [ "$ready" = 1 ] || fail 9 "not READY after 40min (docker logs glm53-head on $HEAD_HOST; see AGENTS.md failure modes)"
+    [ "$ready" = 1 ] || { head_log_tail 60
+      fail 9 "not READY after 40min (see the log above and AGENTS.md failure modes)"; }
   fi
   if [ "$NCCL_IB" = 1 ]; then
     if [ "$DRY" = 1 ]; then
@@ -474,9 +521,20 @@ step_ruler() {
 # --- step 11: verify -----------------------------------------------------
 step_verify() {
   step 11 verify
+  # reference row must match the transport as well as the draft: the
+  # sockets row is a separate measured row, not a penalty on the RDMA one
   local ref=h-nospec
-  [ -n "$MTP_DIR" ] && ref=h-rdma-mtp
-  [ "$NCCL_IB" = 1 ] || printf '  note: reference rows assume RDMA; NCCL_IB=0 expects below-band\n'
+  if [ -n "$MTP_DIR" ]; then
+    [ "$NCCL_IB" = 1 ] && ref=h-rdma-mtp || ref=h-sockets-mtp
+  elif [ "$NCCL_IB" != 1 ]; then
+    printf '  note: h-nospec was measured over RDMA; NCCL_IB=0 reads below that row\n'
+  fi
+  printf '  reference row: %s (MTP_DIR %s, NCCL_IB=%s)\n' \
+    "$ref" "${MTP_DIR:+set}${MTP_DIR:-empty}" "$NCCL_IB"
+  printf '  scope: this gate is speed only (C=1 tok/s + TPOT, all 64 prompts).\n'
+  printf '        the four quality criteria (degenerate / PPL ratio / eval-200 /\n'
+  printf '        TTFT) are not checked here — run AGENTS.md section 6\n'
+  printf '        (requant/verify.py capture + check) for those.\n'
   run python3 "$HERE/verify-result.py" \
     --result "$ROOT/$RESULTS_DIR/measure-$LABEL.json" \
     --ref "$ref" --tol "$VERIFY_TOL" \

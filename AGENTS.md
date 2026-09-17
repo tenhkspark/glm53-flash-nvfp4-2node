@@ -1,5 +1,8 @@
 # Reproduction runbook
 
+This runbook exists in English only; the translated READMEs
+(`README.ja.md`, `README.ko.md`, `README.zh.md`) link back to this file.
+
 Below, I provide the end-to-end steps to reproduce the Stage-1 result
 (35.09 tok/s, C=1) on two NVIDIA DGX Spark nodes. I assume that this
 repository is copied to both nodes (or accessed over SSH) and that the
@@ -10,12 +13,12 @@ source checkpoint is already available on local disk.
 | | |
 |---|---|
 | Nodes | 2x NVIDIA DGX Spark (GB10, `sm_121`, 128 GB unified memory each) |
-| Interconnect | RoCE-capable link between the nodes (ConnectX-7 class). Optional — `NCCL_IB=0` falls back to sockets — but the headline number uses it |
+| Interconnect | RoCE-capable link between the nodes (ConnectX-7 class), cabled port to port with no switch in the path — that direct-attached pair is what the numbers below were measured on. Optional — `NCCL_IB=0` falls back to sockets — but the headline number uses it |
 | Parallelism | Ray TP=2 (one GPU per node) |
 | Image | `vllm/vllm-openai:glm53-flash-arm64-cu130` + derived RDMA image |
-| Serve flags | `--max-model-len 16384`, `--gpu-memory-utilization 0.85`, FP8 KV cache |
-| Host tools | docker on both nodes; python3 + torch + safetensors where `requant/` runs; `ibdev2netdev`/`rdma` on both nodes for the RDMA path |
-| Disk | the source checkpoint (~204 GB) where the requant runs; the route-h output (~190 GB) on **both** nodes; >= ~220 GB free for the rewrite itself; the MTP draft dir is ~16 GiB per node. The upstream BF16 release is ~599 GB and is *not* needed |
+| Serve flags | `--max-model-len 204800`, `--max-num-seqs 20`, `--gpu-memory-utilization 0.85`, `--enable-prefix-caching`, FP8 KV cache, `RAY_memory_usage_threshold=0.99` on both nodes |
+| Host tools | docker on both nodes; a host `python3` — stdlib only, since `requant/verify.py` and `bench/measure.py` import nothing else; `ibdev2netdev`/`rdma` on both nodes for the RDMA path. torch and safetensors come from the image (see step 1), so nothing is pip-installed on the host |
+| Disk | the source checkpoint (~204 GB) where the requant runs; the route-h output (~190 GB) on **both** nodes; the MTP draft dir is ~16 GiB per node. `scripts/agent-run.sh` gates on >= 800 GB free under `WEIGHTS_ROOT` on the requant node (stock + output + draft + two images) and >= 400 GB on the other node (weights copy + image). The upstream BF16 release is ~599 GB and is *not* needed |
 
 The operator that runs `scripts/agent-run.sh` may be a separate machine
 or the head node itself: when `HEAD_HOST` equals `$(hostname)`,
@@ -54,6 +57,32 @@ manual fallback is `pip3 install --user "huggingface_hub[cli]"` plus
 
 ## 1. Requantize (route h)
 
+`requant.py` needs torch and safetensors. I do not install them on the
+host: the serving image already carries both, so I run the script inside
+it (this is what `scripts/agent-run.sh` does, step 7). From the repo
+root on the requant node:
+
+```bash
+docker run --rm --user $(id -u):$(id -g) -e HOME=/tmp \
+    --entrypoint python3 \
+    -v /path/to/GLM-5.3-Flash-NVFP4:/src:ro \
+    -v /path/to:/path/to \
+    -v "$PWD":/repo:ro \
+    vllm/vllm-openai:glm53-flash-arm64-cu130 \
+    /repo/requant/requant.py --target h --src /src \
+    --dst /path/to/GLM-5.3-Flash-NVFP4-h
+```
+
+`--entrypoint python3` because the image's entrypoint is the vLLM CLI,
+which wants a GPU just to build its parser; this step is CPU file work.
+`--user $(id -u):$(id -g)` with `HOME=/tmp` keeps the written shards
+owned by the operator — root-owned output breaks the later unprivileged
+rsync. The second `-v` mounts the output's parent at the same path so
+`--dst` can stay an absolute host path.
+
+On a host that already has torch and safetensors, the plain form is the
+same script:
+
 ```bash
 python3 requant/requant.py --target h \
     --src /path/to/GLM-5.3-Flash-NVFP4 \
@@ -64,7 +93,8 @@ Reads the source read-only, rewrites the target tensors into fresh
 safetensors shards, and rewrites `config.json` / `hf_quant_config.json`
 / the index for the modelopt MIXED_PRECISION loader. Other targets
 (`a`–`e`, `g`) are earlier, narrower routes; `h` is the released one.
-Takes ~30 min and writes ~190 GB, so keep >= ~220 GB free.
+Takes ~30 min and writes ~190 GB; the free-space figures are in the
+Prerequisites table (800 GB on this node, 400 GB on the other).
 
 Statically check the output:
 
@@ -77,7 +107,7 @@ warning when the checkpoint carries `producer.requant_target` = `g`/`h`,
 because those routes boot with the `mla-quant` overlay that makes the
 keys live config.
 
-## 2. Build the MTP draft dir (only if you want speculation)
+## 2. Build the MTP draft dir (the headline number needs it)
 
 ```bash
 python3 requant/build-mtp-draft.py \
@@ -86,6 +116,11 @@ python3 requant/build-mtp-draft.py \
 # copy it to the second node too (or run the script there)
 rsync -aP /path/to/GLM-5.3-Flash-MTP-bf16/ worker-node:/path/to/GLM-5.3-Flash-MTP-bf16/
 ```
+
+This script also needs torch and safetensors, so the same in-image form
+as step 1 applies (`--entrypoint python3`, `-v <stock>:/src:ro`, the
+output parent mounted at its own path, `-v "$PWD":/repo:ro`, then
+`/repo/requant/build-mtp-draft.py --target /src --out <out>`).
 
 The checkpoint's MTP layer is already BF16; this step copies
 `layers.45.*` plus the embedding and lm_head tensors that the draft
@@ -112,37 +147,115 @@ sockets.
 ## 4. Build the overlays
 
 ```bash
-overlays/build-overlays.sh            # needs docker access to the image
-# or, on a host that has the image:
-overlays/build-overlays.sh my-node
+overlays/build-overlays.sh            # read the image from the local docker
+# or, when the image lives on another machine, name it as an ssh host:
+overlays/build-overlays.sh node-with-the-image
 ```
 
+With no argument the patchers read the image files through the local
+docker daemon; the optional argument is the ssh host whose docker holds
+the image (`fetch-image-file.sh` runs there and the files come back).
+
 Produces `overlays/_build/` containing `kda-quant.py`, `mla-quant.py`,
-`glm5next-mtp-bf16.py`, the step-attribution files, and
-`flashinfer_mla_sparse_sm120.py`. Each patcher anchors on the image's
-own source and fails closed if the image drifts. You need the same
-`_build/` output on both nodes — run it per node or copy the directory.
+`glm5next-mtp-bf16.py` and `flashinfer_mla_sparse_sm120.py`. The
+step-attribution build lands one level down, in `_build/step-attr/`, so
+its instrumented `model.py` is never mounted unless `STEP_ATTR=1` asks
+for it — otherwise every measurement would carry the profiling
+overhead. Each patcher anchors on the image's own source and fails
+closed if the image drifts. You need the same `_build/` output on both
+nodes — run it per node or copy the directory.
 
 ## 5. Serve
 
+**Read this before the first start: the API has no authentication.**
+`start-head.sh` serves with `--host 0.0.0.0`, so the endpoint answers on
+every interface of the head node, and anything that can reach the port
+can send requests to it. Run this on a trusted network only; do not
+expose the port to a public one. Access control is yours to provide --
+a firewall, a private subnet, or an ssh tunnel -- and if the endpoint
+has to be reachable from further away, put authentication and TLS in
+front of it. Ray needs separate handling: the head's dashboard is
+already pinned to `127.0.0.1`, but the cluster port the worker joins on
+(`HEAD_IP:6399`) and the ports the two raylets negotiate are not behind
+whatever guards the API, so authenticating the API does not protect
+Ray. Keep those on the pair link and off any untrusted network. The
+stakes here are not only reading: this configuration serves a window of
+204800 tokens out of 128 GB of unified memory per node, so a long
+enough input can exhaust host memory and take the pair down.
+
+`serve.env` is per node, not shared: `IFNAME` is that node's own netdev,
+and the worker additionally needs `MY_IP` (`start-worker.sh` requires
+`HEAD_IP`, `MY_IP`, `IFNAME`, `MODEL_DIR`; `start-head.sh` requires
+`HEAD_IP`, `IFNAME`, `MODEL_DIR`). So I write one file on each node:
+
 ```bash
-cp serve/serve.env.example serve/serve.env   # fill in CHANGEME values
+# on the head node
+cp serve/serve.env.example serve/serve.env
+#   HEAD_IP=<head IP on the fast link>
+#   IFNAME=<head netdev carrying that IP>     MY_IP is unused here
+#   MODEL_DIR=<route-h dir on this node>
+#   MTP_DIR=CHANGEME                          uncomment it and point it at
+#                                             the step-2 draft dir; the
+#                                             headline speed needs it
 . serve/serve.env
-# on the head node:
 serve/start-head.sh
-# on the worker node:
+```
+
+```bash
+# on the worker node
+cp serve/serve.env.example serve/serve.env
+#   HEAD_IP=<same head IP as above>
+#   MY_IP=<this node's IP on the fast link>
+#   IFNAME=<this node's netdev>               may differ from the head's
+#   MODEL_DIR=<route-h dir on this node>
+#   MTP_DIR=CHANGEME                          uncomment it here too: the
+#                                             same draft dir, copied over
+. serve/serve.env
 serve/start-worker.sh
-# after READY, confirm NCCL actually bound IB (not sockets):
+```
+
+Start the head first, and wait for its Ray port to open before
+starting the worker: `start-worker.sh` joins the head's cluster at
+`HEAD_IP:6399` and fails if nothing is listening there yet. The head
+needs tens of seconds to get that far, so poll instead of counting:
+
+```bash
+# on the worker node, before serve/start-worker.sh
+until bash -c "</dev/tcp/$HEAD_IP/6399" 2>/dev/null; do sleep 5; done
+```
+
+`scripts/agent-run.sh` does this itself, polling every 5 s for up to
+5 min (step 9). After READY, confirm NCCL actually bound IB (not
+sockets):
+
+```bash
 docker logs glm53-head 2>&1 | grep -E 'NET/IB|via NET/IB'
 ```
 
-Set `MTP_DIR` to the draft dir from step 2 to enable MTP (`MTP_K=2`).
+**`MTP_DIR` is what the headline number needs.** Set it (in both files)
+to the draft dir from step 2 to enable MTP (`MTP_K=2`). Left unset, the
+pair serves without speculation: about 28 tok/s on this route over RDMA
+(28.28 measured; the published `requant-h1-p1-rdma-nodraft` row in
+`results/results.tsv` is 27.15) against the 35.09 headline, ~20%
+slower. `serve.env.example` ships that line commented out, since the
+path differs per machine, so it is the one setting a serve brought up
+from the example silently does without -- uncomment it on both nodes.
 `NCCL_IB=0` falls back to the stock image over sockets.
+`scripts/agent-run.sh` writes both files itself — see section 7.
+
+Once `/v1/models` answers, "Using the served model" in the README says
+what a client has to send: the served model name, the tool-call flags
+this script ships, and the `reasoning` field the answer arrives in.
 
 ## 6. Gate, then measure
 
-I need a stock baseline for the gate, so I capture it while the stock
-checkpoint is still being served:
+I need a stock baseline for the gate, so I serve the stock checkpoint
+once and capture against it: same `serve.env` as step 5 but with
+`MODEL_DIR` pointing at the stock `GLM-5.3-Flash-NVFP4` dir and
+`MTP_DIR` left unset (comment that line out, or `unset MTP_DIR` after
+sourcing), so the baseline is the unmodified checkpoint without
+speculation. Then restart with the route-h `MODEL_DIR` and `MTP_DIR`
+back in place and run `check` against the saved baseline:
 
 ```bash
 # stock serving up:
@@ -162,3 +275,101 @@ python3 bench/measure.py --url http://HEAD:8000 --label route-h-rdma-k2 \
 
 Both `capture`/`check` and `measure.py` accept an ssh-tunnelled URL;
 `verify.py` additionally takes `--ssh HOST` to spawn the tunnel itself.
+
+## 7. One-command path
+
+`scripts/agent-run.sh` runs sections 0-5, then the ruler and a speed
+check against the published row, over ssh from a single operator shell
+(the head node itself counts as an operator — see the note under
+Prerequisites). The quality gate of section 6 stays manual, because it
+needs the stock checkpoint served once.
+
+### (a) Fill in `setup.env`
+
+```bash
+cp setup.env.example setup.env
+```
+
+Then replace every `CHANGEME`:
+
+| key | what goes there |
+|---|---|
+| `HEAD_HOST`, `WORK_HOST` | ssh hostnames of the two nodes; the head runs the Ray head and the API |
+| `HEAD_IP`, `WORK_IP` | each node's IP on the point-to-point link |
+| `HEAD_IF`, `WORK_IF` | the netdev carrying that IP on each node (`ibdev2netdev` shows the mapping) |
+| `REQUANT_HOST` | which node runs the requant; must equal `HEAD_HOST` or `WORK_HOST`, and must be able to ssh to the other one by hostname |
+| `WEIGHTS_ROOT` | absolute dir present on both nodes; the disk check measures free space here |
+| `STOCK_DIR`, `MODEL_DIR`, `MTP_DIR` | download target, requant output, BF16 draft dir. Absolute paths only — they are bind-mounted into docker under the same path. An empty `MTP_DIR` means serve without speculation |
+| `REMOTE_DIR` | where the repo copy lands on each node (absolute, or relative to the remote `$HOME`) |
+| `MODEL_ID`, `MODEL_REVISION` | what step 4 downloads; pin a commit sha to freeze the checkpoint |
+| `IMAGE`, `NCCL_IB_IMAGE` | base image and the derived RDMA tag built in step 5 |
+| `NCCL_IB` | 1 = derived image + NET/IB, 0 = stock image over sockets |
+| `MTP_K` | speculative tokens; step 1 refuses K >= 4, which does not boot on 128 GB unified memory |
+| `PORT` | API port on the head node |
+| `VERIFY_TOL` | the step 11 band, default 0.07 |
+| `LABEL`, `RESULTS_DIR` | result file `results/measure-<LABEL>.json` and the local dir it is copied back to |
+
+### (b) Read the plan first
+
+```bash
+scripts/agent-run.sh --dry-run
+```
+
+Every command is printed with a `DRY$ ` prefix and nothing runs; the
+last line is `DRY-RUN done (nothing executed)`. The two `serve.env`
+bodies the script would write (head and worker) are printed here too,
+which is the cheapest way to check the addressing before a 40-minute
+boot.
+
+### (c) Run it
+
+```bash
+scripts/agent-run.sh                        # all 11 steps, in order
+scripts/agent-run.sh serve ruler verify     # only some steps
+scripts/agent-run.sh --env /path/to/other.env
+```
+
+Step 1 always runs first, even when I name later steps. Every step is
+idempotent — work already done on the nodes is detected and skipped — so
+after fixing a failure I re-run the same command.
+
+### (d) Pass criteria per step
+
+Each step ends with one greppable line: `STEP <n> OK`, `STEP <n> SKIP
+(<reason>)`, or `STEP <n> FAIL: <cause>` — that last one on stderr,
+followed by exit 1. Steps 6 and 7 print their `SKIP` line and then still reach `OK`, because
+they re-check the existing artifact; steps 5 and 9 stop at the `SKIP`
+line, since there is nothing left to check.
+
+| step | what it does | passes when | when it fails |
+|---|---|---|---|
+| 1 env | loads `setup.env` | `STEP 1 OK` | the message names the offending key: an unset or `CHANGEME` value, a relative weights path, `NCCL_IB` not 0/1, `MTP_K` >= 4, a `REQUANT_HOST` that is neither node, or a missing local `ssh`/`rsync`/`python3` |
+| 2 prereqs | per node: `aarch64`, usable docker, a GB10 in `nvidia-smi`, uverbs under `/dev/infiniband`, the netdev mapped to an HCA; then free space (800 GB on the requant node, 400 GB on the other) and inter-node ssh by hostname | `STEP 2 OK`, or `STEP 2 OK (weights present)` when the stock checkpoint is already complete | an OS that is neither DGX OS nor Ubuntu only prints `WARN` and continues; the other checks are hard. Disk failures print the measured free space next to the requirement |
+| 3 sync | rsyncs the repo to `REMOTE_DIR` on both nodes (`setup.env`, `serve/serve.env`, `results/`, `overlays/_image`, `overlays/_build` excluded) | `STEP 3 OK` | ssh or rsync to one of the nodes |
+| 4 pull | `docker pull` the base image on both nodes; download the checkpoint with `snapshot_download` inside that image when it is not already complete; then assert `config.json` + the index exist and that no file is unreadable | `STEP 4 OK` | `checkpoint incomplete` = a partial download, re-run the step. `unreadable by the operator` = root-owned files from an earlier run without `--user`; chown them and re-run |
+| 5 rdma | builds `NCCL_IB_IMAGE` from `docker/Dockerfile.nccl-ib` on each node | `STEP 5 OK`, or `STEP 5 SKIP (NCCL_IB=0 (sockets))` | the Dockerfile's own libmlx5 ABI check refused the result — the questing `rdma-core` did not install as expected |
+| 6 overlays | runs `overlays/build-overlays.sh` on the head node | `STEP 6 OK`, preceded by `STEP 6 SKIP (overlays already built on <host>)` when `_build/` is complete | a patcher refused its input: the image drifted from the pinned tag. The patchers are fail-closed by design; do not force them |
+| 7 requant | route-h requant inside the image, then `verify.py config` must print `PASS`, then a readability check | `STEP 7 OK`, preceded by `STEP 7 SKIP (requant output present at ...)` on a re-run | `requant died` is usually ENOSPC, which leaves a partial dir: free space and re-run. `verify.py config FAILED` catches the class of writer bug that otherwise surfaces as `KeyError ...weight_scale_2` at load |
+| 8 stage | builds the MTP draft dir, rsyncs weights and draft to the other node over the fast link, re-checks the copy there, and rsyncs `overlays/_build/` to the worker | `STEP 8 OK` | `weights on <host> are incomplete after rsync` means a truncated copy — re-run the step, `rsync --partial` resumes. Left unfixed it shows up ~13 min into the next weight load |
+| 9 serve | writes `serve/serve.env` on each node, starts the head, waits up to 5 min for Ray port 6399, starts the worker, polls `/v1/models` for up to 40 min, and with `NCCL_IB=1` runs the NET/IB gate on the head container | `STEP 9 OK`, or `STEP 9 SKIP (API already READY on <host>:<port>)` | `Ray head port 6399 never came up` and `not READY after 40min` both point at `docker logs glm53-head`. `NCCL NET/IB gate failed` means NCCL fell back to sockets: derived image missing, or `/dev/infiniband` not passed into the container |
+| 10 ruler | runs `bench/measure.py` on the head (C=1, all 64 prompts) and copies `measure-<LABEL>.json` back | `STEP 10 OK` | `ruler failed` = the API stopped answering mid-run; `result file did not come back` = the rsync back to the operator |
+| 11 verify | compares the C=1 row against the reference row | `STEP 11 OK`, after `VERIFY PASS` | `ruler result outside the <tol> band`, with the per-metric deltas printed just above |
+
+### (e) What step 11 accepts
+
+The reference row follows the configuration: `h-rdma-mtp` (35.09 tok/s,
+27.9 ms TPOT) with a draft dir and `NCCL_IB=1`, `h-sockets-mtp` (24.01,
+40.7) with a draft dir over sockets, `h-nospec` (18.98, 51.5) without
+one. Gated metrics are the C=1 aggregate tok/s and the C=1 median TPOT;
+TTFT and MTP acceptance are printed for context only.
+
+The band is `VERIFY_TOL`, default 0.07. That number is measured, not
+chosen for comfort: two identical node pairs running the same ruler came
+out 7% apart, while the same pair re-measured moves about 4%. So a
+reproduction on different hardware is judged at 7%, and a repeat on the
+same pair that drifts past ~4% is worth a second look even when it
+passes.
+
+This step gates speed only. The four quality criteria (degenerate
+outputs, perplexity ratio, eval-200 accuracy, TTFT) are section 6 and
+are not covered here.

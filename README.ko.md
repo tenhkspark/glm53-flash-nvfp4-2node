@@ -148,7 +148,7 @@ NCCL을 실행하고(표에서 "NCCL/IB (RDMA)"), `NCCL_IB=0`은 TCP("sockets")�
 누적되며, 단일 풀링된 해당 토큰 스트림에 대한 평균 음의 로그 가능도에
 지수 함수를 취해 하나의 숫자로 산출합니다. Stock과 candidate는 동일하게
 서빙된 모델을 대상으로 동일한 함수를 통해 측정되며, 통과 기준은 candidate/stock <= 1.10
-비율입니다. 릴리스된 route h는 stock의 11.94 대비 12.54를 기록하여 1.051의
+비율입니다. 릴리스된 route h는 stock의 11.938 대비 12.543를 기록하여 1.051의
 비율을 보였습니다. 표본이 작으므로, 이는 동등성이 아니라 심각한 성능 저하가
 없는지를 점검합니다.
 
@@ -183,9 +183,16 @@ route-h 소켓에서 이에 대한 후보의 time-to-first-token을
 150-item 세트는 95% 신뢰 수준에서 정확도를 대략 +-0.08까지 분해하므로
 (쌍체 분석, 약 20%의 항목이 뒤집힌다고 가정), 제가 측정한 +0.0067은
 차이가 없는 것과 구별할 수 없으며, 0.05의 실제 퇴행 역시 마찬가지일 것입니다.
-0.02라는 게이트 임계값은 이 세트가 분해할 수 있는 수준보다 더 정밀합니다. 즉
-순정보다 진정으로 0.06-0.08 더 나쁜 체크포인트도 여전히
-과반의 확률로 이를 통과할 것입니다. 이 게이트를 '퇴행 없음'으로 해석하는 것은 잘못되었으며, 이는 오직
+0.02라는 게이트 임계값은 이 세트가 분해할 수 있는 수준보다 더 정밀합니다.
+그 +-0.08의 반폭을 약 0.041의 정규 sigma로 읽으면, 순정보다 진정으로 0.06
+더 나쁜 체크포인트도 약 16%의 확률로 정확도 조건을 통과하고, 0.08 더 나쁜
+것은 약 7%의 확률로 통과합니다. 이 산술이 말해 주지 않는 것이 둘 있습니다.
+0.06과 0.08은 정확도의 퍼센트포인트이지 상대적 하락률이 아니며(0.447에서
+0.06 아래는 0.387이지 6% 하락이 아닙니다), 약 16% / 약 7%는 정확도 조건
+하나만에 대한 정규 근사이지 네 항목으로 이루어진 게이트 전체를 통과할
+확률이 아닙니다.
+여기서도 게이트는 여전히 약합니다 — +-0.08의 구간은 0.02의 임계값에 대해,
+그것이 잡아내야 할 대상보다 네 배 넓습니다. 이 게이트를 '퇴행 없음'으로 해석하는 것은 잘못되었으며, 이는 오직
 큰 퇴행만을 배제할 뿐입니다.
 
 탐욕적 샘플링을 적용한 추측 디코딩은 타깃 모델이
@@ -200,7 +207,7 @@ route-h 소켓에서 이에 대한 후보의 time-to-first-token을
 <!-- quality:start -->
 | metric | stock | route h | what it means for a user |
 |---|---|---|---|
-| Perplexity, 8-sentence Japanese probe | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
+| Perplexity, 8-sentence Japanese probe | 11.938 | 12.543 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
 | eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
 | eval-200: trap | 13/50 | 16/50 | Trick-question resistance, graded mechanically: an answer passes if it contains a refusal marker and no digits. That rule rewards hedging, so a checkpoint that became more evasive would gain here while losing on reason -- which is the direction this pair of columns actually moved (+3 trap, -5 reason). I did not test whether the two moves share that cause; do not read the +1 net total as 'no change'. |
 | eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
@@ -208,19 +215,25 @@ route-h 소켓에서 이에 대한 후보의 time-to-first-token을
 | eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. The 95% interval on this difference is about +-0.08, which is four times wider than the 0.02 gate threshold. |
 | TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt. The 2% gap is the median of three runs of the same prompt and is the same size as the run-to-run spread I measure on identical configurations, so this probe shows no TTFT regression it could have detected -- it does not show that TTFT is unchanged. No user-perception test was run. |
 | Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. Zero out of 64 is consistent with a true rate of up to about 5% (rule of three), and the detector only catches empty output, repeated-token runs and exactly periodic loops -- it cannot see a fluent answer that is wrong, truncated or off-topic. |
-| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
+| 13-item evaluate suite | -- | -- | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions). It ran on both node pairs on 2026-09-16 and both runs finished, but 4 of the 13 items produced no result on either run: the two agentic tool-use items (3-step tool success, 4th-step final answer) and both 108K long-context items (en, ja) came back blank. The two runs were also not the same configuration -- pair 1 ran with speculative decoding off, pair 2 ran with it on at a 78.0% acceptance rate -- so the 9 items that did produce numbers cannot be read as a route h vs stock comparison, and I do not report them as one here. Agentic tool use and 108K long context therefore remain untested. |
 <!-- quality:end -->
 
 위의 모든 행은 일본어, 단일 턴(single-turn) 및 사고(thinking) 비활성화 기준입니다. 긴
-문맥(long context), 병렬 요청 및 에이전트 도구 사용을 다루게 될 단 하나의 행은
-대기 중인 13개 항목 스위트이며, 이것이 반영되기 전까지 해당 차원들은 이 체크포인트에서
-테스트되지 않았습니다.
+문맥(long context), 병렬 요청 및 에이전트 도구 사용을 다루는 단 하나의 행 — 13개 항목
+스위트 — 는 2026-09-16에 두 노드 쌍 모두에서 실행되었지만, 13개 항목 중 4개가 두 실행
+모두에서 결과를 내지 못했습니다: 에이전트 도구 성공, 에이전트 최종 응답, 통합 과제 en
+108K, 통합 과제 ja 108K입니다. 따라서 에이전트 도구 사용과 108K 긴 문맥은 이 체크포인트에서
+여전히 측정되지 않았습니다 — 스위트가 아직 실행되지 않아서가 아니라, 실행했는데도 해당
+항목들이 결과를 내지 않았기 때문입니다. 두 실행은 route h 대 stock의 동일 조건 비교도
+아닙니다: pair 1은 투기적 디코딩 없이, pair 2는 수용률 78.0%의 투기적 디코딩으로
+돌았기 때문에, 결과가 나온 항목들조차 두 체크포인트 사이의 차이로 읽을 수 없습니다.
 
 **이 게이트가 측정하지 않는 것.** 위의 모든 숫자는 일본어, 단일 턴, 사고 비활성화,
 탐욕적 디코딩(greedy), 2k 토큰 미만의 문맥, 그리고 한 번에 하나의 요청 기준입니다.
 저는 영어 또는 다른 어떤 언어에 대해서도, 코드 정확성에 대해서도, 다중 턴 대화에 대해서도,
 도구 호출(도구 열은 구조적으로 영점입니다)에 대해서도, 지시 준수(instruction following)에 대해서도,
-긴 문맥에 대해서도 — 출하하는 서빙 윈도우는 204800 토큰이지만 위의 프로브는 모두 2k 정도에
+긴 문맥에서의 품질에 대해서도 — "긴 문맥, 실측"의 바늘 프로브는 194,544 토큰까지
+40문제 중 40문제이지만 그것은 검색이고, 위의 품질 프로브는 모두 2k 정도에
 들어갑니다 — 안전성 동작에 대해서도, 혹은 사고가 활성화된
 경우(이 모델 제품군이 일반적으로 사용되는 방식)에 대해서도 이 체크포인트를 측정한 바가 없습니다.
 재양자화는 밀집 선형(dense linear) 및 lm_head를 다시 작성하므로, 바로 그곳들이 이러한 네 가지
@@ -236,6 +249,26 @@ K=2의 MTP를 적용하여 RDMA를 통한 페어 2에서 측정했을 때, 루�
 제가 선언한 범위 이내였기 때문에 저는 h를 배포했습니다. 속도를 더 작은 차이에 사용하기를 원하신다면,
 g는 단 하나의 플래그 변경입니다.
 
+## 서빙하기 전에: 인증 없음, 모든 인터페이스
+
+`serve/start-head.sh` 는 `--host 0.0.0.0` 으로 API를 띄우므로 노드의 모든
+인터페이스에서 수신하며, 서버는 API 키를 확인하지 않습니다. 즉 포트에 도달할
+수 있는 클라이언트는 누구든 요청을 보낼 수 있습니다. 이 파일의 나머지는
+여러분이 이 점을 읽었다고 가정합니다.
+
+- 이 구성은 신뢰하는 네트워크 안에 두고, 포트를 공개 네트워크에 노출하지
+  마십시오.
+- 접근 제어는 여러분이 직접 마련해야 합니다. 엔드포인트가 노드 바깥에서
+  도달 가능해야 한다면 그 앞에 여러분 자신의 방화벽 규칙을 두고, 트래픽에
+  인증이나 TLS가 필요하다면 인증을 거치는 프록시를 함께 두십시오.
+- Ray의 관리 포트와 두 노드가 서로 사용하는 포트는 API 포트가 아니며 별도로
+  격리해야 합니다. 출하되는 스크립트는 Ray 대시보드를 127.0.0.1에
+  바인딩하지만 그것은 여러 포트 중 하나일 뿐입니다. API 앞에 인증을 두어도
+  Ray는 보호되지 않습니다.
+- 이 구성에서는 충분히 긴 프롬프트가 호스트 메모리를 고갈시킬 수 있으므로
+  (아래 "긴 문맥, 실측"이 그 지점을 측정합니다), 열어 둔 채 방치한
+  엔드포인트는 읽히는 경로일 뿐 아니라 노드를 멈추는 경로이기도 합니다.
+
 ## 재현 방법
 
 사전 요구 사항, 정확한 명령어, 예상 소요 시간(wall time), 디스크 요구량을 담은 전체 런북은
@@ -243,6 +276,19 @@ g는 단 하나의 플래그 변경입니다.
 재양자화하고, RDMA 이미지와 오버레이를 빌드한 다음, `serve/start-head.sh` 및 `serve/start-worker.sh`로
 서빙하고, `requant/verify.py check`로 게이트를 확인한 뒤 `bench/measure.py`로 측정하십시오. 프롬프트
 세트는 [bench/README.md](bench/README.md)에 기술되어 있습니다.
+
+**headline 속도를 재현하려면 `MTP_DIR` 설정이 필요합니다.** 35.09 tok/s 행은
+K=2의 MTP 드래프트를 *함께* 쓴 루트 h이며, 드래프트는 `MTP_DIR`이 드래프트
+디렉터리를 가리킬 때에만 로드됩니다. `serve/serve.env.example`은 그 줄을
+`CHANGEME` 경로와 함께 주석 처리된 상태로 담고 있습니다. 경로가 기기마다
+다르기 때문에 의도한 것입니다. 따라서 출하된 그대로의 예시에서 띄운 서빙은
+드래프트 없이 돌아가며 드래프트가 없을 때의 속도로 디코딩합니다. 그렇게 해서
+제가 측정한 값은 28.28 tok/s로, 위의 드래프트 없는 27.15 행과 +4% 차이로
+일관됩니다. 같은 실행에서 드래프트를 켠 값은 34.99 tok/s이며, TPOT 중앙값
+27.9 ms, TTFT 중앙값 0.309 s, 수락률 0.6223, 64개 요청 중 0개 실패였습니다.
+측정하기 전에 그 줄의 주석을 풀고 여러분 자신의 경로를 넣으십시오.
+`requant/build-mtp-draft.py`가 순정 체크포인트로부터 드래프트 디렉터리를
+만들며, [AGENTS.md](AGENTS.md)에 그 단계가 있습니다.
 
 ## 공개된 런북으로부터의 재현
 
@@ -274,14 +320,77 @@ g는 단 하나의 플래그 변경입니다.
 이는 아래 "What did not work, and when"에 나열되어 있습니다. 각각은 클린
 실행 실패를 통해 발견되었으며, 그중 어느 것도 제 자체 트리 내부에서는 보이지 않았습니다.
 
+## 서빙 중인 모델 사용하기
+
+`serve/start-head.sh` 는 `PORT`(기본값 8000)에 OpenAI 호환 API를
+올립니다. 이 API의 세 가지 성질은 serve 줄이 정하며 바깥에서는 추측할
+수 없으므로, 여기에 적어 둡니다.
+
+**모델 id는 `GLM-5.3-Flash-NVFP4-Wabi` 입니다.** 스크립트가
+`--served-model-name` 을 넘기므로, 체크포인트 경로가 아니라 이 문자열을
+요청에 실어야 합니다. 다른 id는 404로 돌아옵니다. `/v1/models` 는 이
+id를 서빙 창과 함께 돌려줍니다:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models
+```
+
+head 노드에서 보내는 완전한 요청:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "GLM-5.3-Flash-NVFP4-Wabi",
+       "messages": [{"role": "user", "content": "Hello."}],
+       "max_tokens": 128}'
+```
+
+OpenAI 호환 클라이언트에 필요한 설정은 세 가지뿐입니다: base URL
+`http://127.0.0.1:8000/v1`(클라이언트가 다른 머신에서 돌 때는
+localhost 자리에 head의 주소를), 모델 `GLM-5.3-Flash-NVFP4-Wabi`,
+그리고 API 키는 아무 문자열이나 — 서버는 검사하지 않습니다. 저는 정확히
+그렇게 설정한 코딩 에이전트에서 이 서버를 사용합니다.
+
+**툴 호출은 켜져 있습니다.** serve 줄이
+`--enable-auto-tool-choice --tool-call-parser glm45` 를 달고 있어서,
+클라이언트는 `tools` 를 보내고 구조화된 `tool_calls` 를 돌려받습니다.
+이 두 플래그가 없으면 `tools` 를 실은 요청은 HTTP 400으로 거절됩니다:
+
+```
+"auto" tool choice requires --enable-auto-tool-choice and
+--tool-call-parser to be set
+```
+
+**`content` 뿐 아니라 `reasoning` 도 읽고, thinking을 끄려고 하지
+마십시오.** `--reasoning-parser glm45` 는 모델의 thinking을 메시지의
+별도 `reasoning` 필드로 옮기고, `content` 에는 답변을 남깁니다. 끄는
+스위치처럼 보이는 손잡이는 스위치가 아닙니다:
+
+| 클라이언트가 보내는 것 | `reasoning` | `content` |
+|---|---|---|
+| 아무것도 보내지 않음 — 기본값 | thinking | 답변 |
+| `chat_template_kwargs: {"enable_thinking": false}` | 비어 있음 | thinking과 답변이 이어져 나옴 |
+| `continue_final_message` 를 붙인 빈 assistant 턴 | 응답 전체 | 비어 있음 |
+
+`enable_thinking: false` 가 멈추는 것은 모델이 아니라 파서입니다. 모델은
+계속 thinking하고, 그 생각은 읽는 사람 눈에 닿는 `content` 로
+떨어집니다. 빈 assistant 이어쓰기 — 기준자에서 thinking을 건너뛰려고
+`bench/measure.py` 가 쓰는 방식 — 는 같은 기구의 반대편입니다.
+템플릿이 thinking 블록을 스스로 닫아 버리므로 모델은 닫는 태그를 한
+번도 내보내지 않고, 파서는 응답 전체를 `reasoning` 에 남깁니다. 둘 다
+서버 쪽 설정으로는 고칠 수 없습니다. 둘 다 보내지 말고 두 필드를 모두
+읽으면, 평범한 OpenAI 호환 클라이언트가 그대로 동작합니다.
+
 ## 속도 결과
 
 고정된 측정 기준: 64개의 일본어 산문 프롬프트, `temperature=0`,
 `max_tokens=512`, 빈 어시스턴트 연속을 통해 thinking 생략.
 별도 표기가 없는 한, C=1은 프롬프트별 TTFT/TPOT와 함께
 모든 64개 프롬프트를 순차적으로 스트리밍합니다. 제공되는 `serve/` 스크립트는
-`--max-model-len 204800`, `--max-num-seqs 2`, `--gpu-memory-utilization 0.88`,
-FP8 KV 캐시로 고정합니다. 아래의 측정된 행들은 그 대신 측정용 설정으로
+`--max-model-len 204800`, `--max-num-seqs 20`,
+`--gpu-memory-utilization 0.85`, `--enable-prefix-caching`,
+FP8 KV 캐시, 그리고 두 노드 모두에서
+`RAY_memory_usage_threshold=0.99`로 고정합니다. 아래의 측정된 행들은 그 대신 측정용 설정으로
 실행되었습니다 — 거의 모두 `--max-model-len 16384`에 `--max-num-seqs 20`,
 2026-09-13 순정 기준선은 `--max-model-len 131072`에 슬롯 32개,
 pair 2 순정 RDMA 행은 16384에 슬롯 32개였습니다.
@@ -293,19 +402,20 @@ c1pair 및 route-h 행은 `--gpu-memory-utilization 0.86`을 실행했으며,
 
 **왜 출하하는 윈도우는 204800이고 표는 그렇지 않은가.** 16384은 측정용
 값으로 — MTP를 처음 띄울 수 있었던 길이 — 위의 모든 비교를 거치는 동안
-그대로 고정되어 있었습니다. 2026-09-17에 다시 측정한 결과, 공개하는 구성은
-`--max-model-len 204800` `--max-num-seqs 2` `--gpu-memory-utilization 0.88`에서
-동일한 64개 프롬프트 ruler에 대해 35.15 tok/s를 기록했고, 16384 / 20 / 0.86의
-35.09와 비교하면 윈도우를 12.5배로 늘려도 약 2%의 실행 간 편차 안에서
-차이를 검출할 수 없습니다. 긴 윈도우의 대가는 속도가 아니라 동시 실행입니다 —
-제공 스크립트가 슬롯을 20개가 아니라 2개 요청하는 것은 307200에서
-슬롯 20개로 엔진이 뜨지 않았기 때문이며, 204800에서 그 상한을 다시
-측정하지는 않았습니다. 0.89 활용률은 이 페어에서 부팅이 거부된 적이
-있습니다. 윈도우가
-들어가는 이유의 하나는 재양자화입니다: 같은 0.88에서 순정 체크포인트는
-156672 토큰이 상한이고(부팅을 거부할 때 vLLM이 그 상한을 출력합니다),
-route h는 204800에서 부팅합니다. 그 길이에 가까운 프롬프트로는 아무것도
-측정하지 않았습니다 — 위의 "이 게이트가 측정하지 않는 것"을 보십시오.
+그대로 고정되어 있었습니다. 2026-09-17에 다시 측정한 결과, 출하하는 구성은
+동일한 64개 프롬프트 ruler에서 34.78 tok/s, TPOT 중앙값 28.1 ms, TTFT
+중앙값 0.313 s, 요청 64건 중 실패 0건이었습니다. 16384 / 20 / 0.86의
+35.09와 비교하면 0.9% 차이이고, 윈도우는 12.5배 길어졌지만 동일 구성에서의
+실행 간 편차 약 2% 안에 들어갑니다. 긴 윈도우가 동시 실행을 깎지도
+않습니다: 슬롯 20개는 204800에서 뜹니다(READY까지 909초, 그다음 같은
+ruler에서 실패 0건). 307200에서는 뜨지 않았습니다. 내린 플래그는 활용률
+하나뿐입니다 — 0.89는 이 페어에서 부팅이 거부된 적이 있고, 0.88에서는
+head 노드의 호스트 RAM 여유가 약 2.1%로, 무엇이 먼저 거둬가든 고갈에
+너무 가깝습니다. 그래서 스크립트는 0.85를 출하하고 8.6%를 남깁니다.
+윈도우가 들어가는 이유의 하나는 재양자화입니다: 0.88에서 순정
+체크포인트는 156672 토큰이 상한이고(부팅을 거부할 때 vLLM이 그 상한을
+출력합니다), route h는 204800에서 부팅합니다. 윈도우를 실제로 쓰는
+프롬프트에서 무엇이 나오는지는 아래 "긴 문맥, 실측"에서 측정했습니다.
 
 제가 계산하는 방식:
 
@@ -419,7 +529,7 @@ factory 로그로부터 직접 세어 보니, 대표 실행 자체의 64개 프�
 멈추기보다는 512-토큰 상한에 도달하였습니다. 기본 체크포인트에서 C=32 집계는
 소켓을 통해 95.08 tok/s(pair 2, 64 prompts), RDMA를 통해
 109.03 tok/s(pair 2, 64 prompts)였습니다; 이 두 패스는 모두 슬롯 32개로
-실행되었고 출하하는 `--max-num-seqs 2`로는 재현되지 않으므로, 공개
+실행되었고 출하하는 `--max-num-seqs 20`으로는 재현되지 않으므로, 공개
 스크립트가 내는 값이 아니라 측정용 값으로 읽어 주십시오. 경로 h에 대한
 C=32 행은 아직 없습니다.
 
@@ -453,6 +563,71 @@ C=32 행은 아직 없습니다.
 사이의 편차는 다른 무언가가 이 머신을 건드리고 있을 때 하나의 32-프롬프트
 패스가 초래할 수 있는 수준이며, 이는 64-프롬프트 기준 잣대가 재실행 전반에서
 보여주는 ~2%보다 더 넓습니다.
+
+## 긴 문맥, 실측
+
+프로브는 `bench/longctx.py`입니다: 일본어 채움 텍스트를 목표 길이까지
+키우고, 앞·중간·뒤 토큰 깊이에 열 개의 사실을 심은 뒤 각각 한 문제씩
+묻습니다(`temperature=0`). 채점은 심판 모델이 아니라 코드의 정확한
+일치입니다. 세트는 `bench/longctx-probe.jsonl`이고, 각 문서는 그
+열 문제의 공유 접두사이므로 긴 prefill은 길이마다 한 번만 냅니다.
+출하 구성 — `--max-model-len 204800`, `--max-num-seqs 20`,
+`--gpu-memory-utilization 0.85`, `--enable-prefix-caching`, route h에
+MTP K=2, RDMA — 에서 한 번 돌린 결과입니다:
+
+| 프롬프트 토큰 | 찾은 바늘 | 첫 토큰, 콜드 | 첫 토큰, 캐시 워밍 후 | prefill |
+|---:|---|---:|---:|---:|
+| 16,345 | 10/10 | 10.02 s | 4.27 s | 1630.6 tok/s |
+| 65,545 | 10/10 | 39.95 s | 2.91 s | 1640.8 tok/s |
+| 130,990 | 10/10 | 79.86 s | 3.15 s | 1640.2 tok/s |
+| 194,544 | 10/10 | 120.04 s | 4.74 s | 1620.6 tok/s |
+
+40문제 중 40문제, 특정 깊이가 더 약하지도 않았습니다: 앞 12/12,
+중간 16/16, 뒤 12/12. 다른 구성에서 나온 측정이 하나 있는데 일부러
+표에서 빼 두었습니다: `--max-model-len 307200`에 활용률 0.88 —
+스크립트가 출하하는 값이 아닙니다 — 에서 204,767 토큰짜리 문서 한
+건이 10/10이었습니다. 공개 스크립트가 열지 않는 윈도우가 필요하므로
+위의 한 행으로 넣지 않습니다.
+
+이것은 검색이지 품질이 아닙니다. 194,544 토큰에서도 심어 둔 사실을
+찾아낸다는 말은 됩니다. 거기서 산문이나 추론이 버티는지에 대해서는
+아무 말도 하지 않습니다.
+
+긴 윈도우에는 제약이 따라옵니다.
+
+- **윈도우 크기만 한 프롬프트는 들어가지 않습니다.** 프로브의 최상단이
+  200k가 아니라 190k를 겨냥하는 데에는 측정된 이유가 있습니다:
+  204,754 토큰 문서에 `max_tokens=64`를 더하면 204,818이 되어
+  204,800 상한을 넘고, 서버는 `HTTP 400`을 돌려줍니다. 엔진은 살아
+  있고 — 다음 요청은 정상적으로 답합니다 — 그 문서에 대해 물을 수
+  없을 뿐입니다. 실사용 상한은 윈도우에서 생성 예산과 챗 템플릿 몫을
+  뺀 길이입니다.
+- **긴 프롬프트의 첫 토큰은 느립니다.** prefill은 네 단계 모두에서
+  1620에서 1641 tok/s 사이에 머물러, 194,544 토큰 프롬프트는 첫
+  토큰이 나오기까지 120.04초가 걸립니다. 멈춘 것이 아니라 prefill
+  중입니다. `--enable-prefix-caching`이 출하 플래그에 들어간 이유가
+  이것입니다: 긴 문서 하나를 접두사로 고정하고 질문만 바꾸면, 첫 요청
+  이후는 자릿수가 달라집니다 — 130,990 토큰에서 콜드 79.86초 대비
+  캐시 후 3.15초.
+- **약 259,000 토큰을 넘으면 이 하드웨어에서는 아무것도 통과하지
+  못합니다.** `--max-model-len`을 늘려도,
+  `--gpu-memory-utilization`을 낮춰도, `--max-num-batched-tokens`를
+  줄여도 마찬가지입니다: 호스트 메모리가 바닥나고 노드의 OOM 수거기가
+  vLLM 워커를 가져갑니다. vLLM이 부팅 때 출력하는 `peak activation`은
+  8192 토큰 더미 실행에서 잰 값이고, 긴 prefill에서 희소 어텐션
+  인덱서가 요구하는 임시 영역은 `--gpu-memory-utilization` 예산
+  바깥에 있습니다. 활용률을 0.88에서 0.85로 낮추니 죽기까지가 prefill
+  62초에서 155초로 늘어났을 뿐, 프롬프트가 통과하지는 않았습니다.
+
+`RAY_memory_usage_threshold=0.99`는 `serve/start-head.sh`와
+`serve/start-worker.sh`가 두 노드 모두에서 export하며, 생략할 수
+없습니다. 통합 메모리에서는 `--gpu-memory-utilization`이 호스트
+RAM에서 나가기 때문에, Ray 자신의 OOM 모니터가 노드를 기본값 0.95
+위로 보고 찾을 수 있는 가장 큰 액터, 즉 vLLM TP0 워커를 죽입니다.
+보이는 것은 `EngineDeadError`뿐이고 — 부팅 중에도, 요청 도중에도
+나옵니다 — vLLM 로그에는 이상이 없으며 kill 줄은 raylet 로그에
+있습니다. 두 스크립트는 각각 별개의 raylet을 띄우고 모니터도
+raylet마다 있으므로, 이 변수는 양쪽 모두에서 export해야 합니다.
 
 ## What did not work, and when
 
@@ -540,9 +715,10 @@ AA-LCR 0.7100 -> 0.7106, IFBench 0.6130 -> 0.6054, Terminal-Bench 2.1 0.8258 -> 
 - 영어 및 기타 언어. 본 문서의 모든 프로브는 일본어입니다.
 - 코드 정확성. 코드 프롬프트는 속도 표에 나타나며 품질 표에는 전혀
   나타나지 않습니다.
-- 다중 턴 대화, 도구 호출, 지시 수행, 긴 컨텍스트 — 출하하는 윈도우는
-  204800 토큰이지만 그에 가까운 프롬프트로는 아무것도 측정하지
-  않았습니다 — 안전 동작, 그리고 사고 모드가 활성화된 모델(이 제품군이
+- 다중 턴 대화, 도구 호출, 지시 수행, 긴 컨텍스트에서의 품질 — 바늘
+  프로브는 194,544 토큰까지 40문제 중 40문제이지만 그것은 검색이고,
+  품질 표는 2k 정도보다 긴 프롬프트에서 아무것도 돌지 않았습니다
+  — 안전 동작, 그리고 사고 모드가 활성화된 모델(이 제품군이
   통상적으로 사용되는 방식)입니다.
 - 신뢰 구간을 포함한 더 큰 코퍼스에서의 Perplexity. 현재의 프로브는 여덟 개의
   문장으로 이루어져 있고 코드가 토큰별 값을 보존하지 않으므로, 비율에 연계된
@@ -665,5 +841,10 @@ tests/                      run-tests.sh (offline smoke) +
 
 ## 라이선스
 
-Apache-2.0, LICENSE를 참조하십시오. 모델 가중치는 이 저장소의 일부가 아닙니다.
-`requant/requant.py`를 사용하여 NVIDIA 체크포인트를 직접 재양자화하십시오.
+이 저장소의 코드는 Apache-2.0이며, LICENSE를 참조하십시오. 가중치는 별개의
+문제입니다. 가중치는 이 저장소의 일부가 아니며, Hugging Face에 공개된 파생
+체크포인트는 Apache-2.0이 아니라 `zai-org/GLM-5.3-Flash`로부터 물려받은
+상류의 MIT 라이선스를 따릅니다. 해당 Hugging Face 저장소에는 MIT 원문이
+그대로 동봉되어 있고, 상류 모델과 NVIDIA Model Optimizer의 기반 양자화,
+그리고 기여자를 명시한 NOTICE가 함께 들어 있습니다. 가중치를 직접 빌드하려면
+`requant/requant.py`로 NVIDIA 체크포인트를 재양자화하십시오.

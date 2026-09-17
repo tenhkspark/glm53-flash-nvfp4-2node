@@ -1,5 +1,6 @@
 # route h + MTP K=2, pair 2, NCCL/IB (RDMA), expert-parallel on — measured 2026-09-16 JST (second-pair repeat of the headline config)
 # serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; NCCL over IB image; MTP draft K=2
 # sanitised measure.py LEVEL/ACCEPT excerpt
+# weighted TPOT (sum(wall-ttft)/sum(tokens-1) across the C=1 pass's 64 per-prompt rows, computed from the pre-sanitisation factory log; the per-prompt rows themselves are stripped from this excerpt): 28.43 ms
 LEVEL label=c1pair-K2 C=1 prompts=64 tok/s=34.47 tokens=32407 wall=940.02s fails=0 tpot_med_ms=28.2 ttft_med_s=0.313
 ACCEPT label=c1pair-K2 d_accepted=17960.0 d_draft_tokens=28870.0 d_drafts=14435.0 acceptance=0.6221 mean_accepted_len=2.2442

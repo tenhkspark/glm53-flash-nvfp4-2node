@@ -156,8 +156,8 @@ actual prompt tokens are accumulated across all eight sentences and
 the mean negative log-likelihood over that single pooled token stream
 is exponentiated into one number. Stock and candidate are measured by
 the identical function against the same served model, and the gate is
-the ratio candidate/stock <= 1.10 — the released route h scored 12.54
-against 11.94 stock, a ratio of 1.051. The sample is small, so this
+the ratio candidate/stock <= 1.10 — the released route h scored 12.543
+against 11.938 stock, a ratio of 1.051. The sample is small, so this
 checks for gross degradation, not for parity.
 
 **How eval-200 is scored.** eval-200 is a fixed set of 200 Japanese
@@ -191,10 +191,18 @@ declared gate, but an increase, not parity. Eval-200 moved +0.005 on the
 150-item set resolves accuracy to roughly +-0.08 at 95% confidence
 (paired, assuming ~20% of items flip), so the +0.0067 I measured is
 indistinguishable from zero — and so would be a true regression of 0.05.
-The 0.02 gate threshold is finer than what this set can resolve: a
-checkpoint genuinely 0.06-0.08 worse than stock would still pass it more
-often than not. Reading this gate as 'no regression' is wrong; it only
-rules out a large one.
+The 0.02 gate threshold is finer than what this set can resolve: read
+that +-0.08 half-width as a normal sigma of 0.041, and a checkpoint
+genuinely 0.06 worse than stock still clears the accuracy condition
+about 16% of the time, and one genuinely 0.08 worse about 7%. Two things
+that arithmetic is not: 0.06 and 0.08 are percentage points of accuracy,
+not relative drops (0.06 below 0.447 is 0.387, not a 6% decline), and the
+about-16% / about-7% figures are a normal approximation for the accuracy
+condition on its own, not the probability of passing the four-criterion
+gate as a whole.
+The gate is still weak here — a +-0.08 interval against a 0.02 threshold
+is four times wider than the thing it is supposed to catch. Reading this
+gate as 'no regression' is wrong; it only rules out a large one.
 
 Speculative decoding with greedy sampling is designed to accept only
 tokens the target model would have produced, so in principle the draft
@@ -208,7 +216,7 @@ rendered from `results/quality.tsv`:
 <!-- quality:start -->
 | metric | stock | route h | what it means for a user |
 |---|---|---|---|
-| Perplexity, 8-sentence Japanese probe | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
+| Perplexity, 8-sentence Japanese probe | 11.938 | 12.543 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
 | eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
 | eval-200: trap | 13/50 | 16/50 | Trick-question resistance, graded mechanically: an answer passes if it contains a refusal marker and no digits. That rule rewards hedging, so a checkpoint that became more evasive would gain here while losing on reason -- which is the direction this pair of columns actually moved (+3 trap, -5 reason). I did not test whether the two moves share that cause; do not read the +1 net total as 'no change'. |
 | eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
@@ -216,21 +224,30 @@ rendered from `results/quality.tsv`:
 | eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. The 95% interval on this difference is about +-0.08, which is four times wider than the 0.02 gate threshold. |
 | TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt. The 2% gap is the median of three runs of the same prompt and is the same size as the run-to-run spread I measure on identical configurations, so this probe shows no TTFT regression it could have detected -- it does not show that TTFT is unchanged. No user-perception test was run. |
 | Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. Zero out of 64 is consistent with a true rate of up to about 5% (rule of three), and the detector only catches empty output, repeated-token runs and exactly periodic loops -- it cannot see a fluent answer that is wrong, truncated or off-topic. |
-| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
+| 13-item evaluate suite | -- | -- | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions). It ran on both node pairs on 2026-09-16 and both runs finished, but 4 of the 13 items produced no result on either run: the two agentic tool-use items (3-step tool success, 4th-step final answer) and both 108K long-context items (en, ja) came back blank. The two runs were also not the same configuration -- pair 1 ran with speculative decoding off, pair 2 ran with it on at a 78.0% acceptance rate -- so the 9 items that did produce numbers cannot be read as a route h vs stock comparison, and I do not report them as one here. Agentic tool use and 108K long context therefore remain untested. |
 <!-- quality:end -->
 
 Every row above is Japanese, single-turn and thinking off. The one row
-that would cover long context, parallel requests and agentic tool use is
-the pending 13-item suite; until it lands, those dimensions are untested
-on this checkpoint.
+that would cover long context, parallel requests and agentic tool use —
+the 13-item suite — did run, on 2026-09-16, on both node pairs, but 4 of
+its 13 items returned nothing in either run: agentic tool success,
+agentic final answer, integrated task en 108K and integrated task ja
+108K. So agentic tool use and 108K long context are still unmeasured on
+this checkpoint — not because the suite is waiting to run, but because
+the items that cover them produced no result when it did. The two runs
+are also not a like-for-like route h vs stock comparison: pair 1 ran with
+no speculation and pair 2 ran with speculative decoding at 78.0%
+acceptance, so even the items that did return cannot be read as a
+difference between the two checkpoints.
 
 **What this gate does not measure.** Every number above is Japanese,
 single-turn, thinking off, greedy, under 2k tokens of context and one
 request at a time. I have no measurement of this checkpoint on English
 or any other language, on code correctness, on multi-turn conversations,
 on tool calling (the tool column is a structural zero), on instruction
-following, on long context — the shipped serving window is 204800
-tokens, but every probe above fits in about 2k — on
+following, on long-context quality — the needle probe in "Long context,
+measured" scores 40/40 up to 194,544 tokens, but that is retrieval, and
+every quality probe above fits in about 2k — on
 safety behaviour, or with thinking enabled — which is how this model
 family is normally used. The requant rewrites the dense linears and
 lm_head, so those are exactly the places a regression could hide from
@@ -249,6 +266,28 @@ bound the quality delta, not to minimise it, and 1.051 is inside the
 bound I declared before measuring. If you would rather spend the speed
 on the smaller delta, g is the one flag change.
 
+## Before you serve: no authentication, all interfaces
+
+`serve/start-head.sh` puts the API up with `--host 0.0.0.0`, so it
+listens on every interface of the node, and the server checks no API key
+— any client that can reach the port can send requests. The rest of this
+file assumes you have read that.
+
+- Keep this configuration on a network you trust and do not expose the
+  port to a public one.
+- Access control is yours to provide. If the endpoint has to be reachable
+  from beyond the node, put your own firewall rules in front of it, and
+  an authenticating proxy with TLS if the traffic needs either.
+- Ray's management ports and the ports the two nodes use between
+  themselves are not the API port and need isolating on their own. The
+  shipped script binds the Ray dashboard to 127.0.0.1, but that is one
+  port out of several: putting authentication in front of the API does
+  not protect Ray.
+- A long enough prompt can exhaust host memory on this configuration
+  ("Long context, measured" below measures where that happens), so an
+  endpoint left open is a way to take the nodes down, not only a way to
+  read them.
+
 ## How to reproduce
 
 The full runbook — prerequisites, exact commands, expected wall times,
@@ -258,6 +297,19 @@ image and the overlays, serve with `serve/start-head.sh` and
 `serve/start-worker.sh`, gate with `requant/verify.py check`, then
 measure with `bench/measure.py`. The prompt sets are described in
 [bench/README.md](bench/README.md).
+
+**Reproducing the headline speed needs `MTP_DIR`.** The 35.09 tok/s row
+is route h *with* the MTP draft at K=2, and the draft is loaded only if
+`MTP_DIR` points at a draft directory. `serve/serve.env.example` carries
+that line commented out with a `CHANGEME` path — on purpose, because the
+path differs per machine — so a serve brought up from the example as it
+ships runs with no draft and decodes at draft-free speed: I measured
+28.28 tok/s that way, consistent with the 27.15 no-draft row above (+4%),
+against 34.99 tok/s on the same configuration with the draft — TPOT
+median 27.9 ms, TTFT median 0.309 s, acceptance 0.6223, 0 of 64 requests failed.
+Uncomment the line and put your own path in it before measuring.
+`requant/build-mtp-draft.py` builds the draft directory from the stock
+checkpoint; [AGENTS.md](AGENTS.md) gives that step.
 
 ## Reproduced from the published runbook
 
@@ -293,13 +345,78 @@ Getting there took seven fixes to the runbook and the driver, listed
 under "What did not work, and when" below; each was found by the clean
 run failing, and none of them was visible from inside my own tree.
 
+## Using the served model
+
+`serve/start-head.sh` puts an OpenAI-compatible API on `PORT` (default
+8000). Three properties of that API are decided by the serve line and
+cannot be guessed from the outside, so they are written down here.
+
+**The model id is `GLM-5.3-Flash-NVFP4-Wabi`.** The script passes
+`--served-model-name`, so that string — not the checkpoint path — is
+what a request has to carry; any other id comes back 404. `/v1/models`
+returns it together with the serving window:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models
+```
+
+A complete request, from the head node:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "GLM-5.3-Flash-NVFP4-Wabi",
+       "messages": [{"role": "user", "content": "Hello."}],
+       "max_tokens": 128}'
+```
+
+An OpenAI-compatible client needs three settings and nothing else: base
+URL `http://127.0.0.1:8000/v1` (the head's address in place of
+localhost when the client runs elsewhere), model
+`GLM-5.3-Flash-NVFP4-Wabi`, and any string as the API key — the server
+does not check one. I drive this server from a coding agent set up
+exactly that way.
+
+**Tool calls are on.** The serve line carries
+`--enable-auto-tool-choice --tool-call-parser glm45`, so a client may
+send `tools` and gets structured `tool_calls` back. Without those two
+flags every request carrying `tools` is refused with HTTP 400:
+
+```
+"auto" tool choice requires --enable-auto-tool-choice and
+--tool-call-parser to be set
+```
+
+**Read `reasoning` as well as `content`, and do not try to switch
+thinking off.** `--reasoning-parser glm45` moves the model's thinking
+into a separate `reasoning` field on the message and leaves `content`
+holding the answer. The knob that looks like an off switch is not one:
+
+| what the client sends | `reasoning` | `content` |
+|---|---|---|
+| nothing — the default | the thinking | the answer |
+| `chat_template_kwargs: {"enable_thinking": false}` | empty | thinking and answer, run together |
+| an empty assistant turn with `continue_final_message` | the whole reply | empty |
+
+`enable_thinking: false` stops the parser, not the model: it keeps
+thinking, and the thinking lands in `content`, where the reader sees
+it. The empty-assistant continuation — the idiom `bench/measure.py`
+uses to skip thinking on the ruler — is the same mechanism from the
+other side: the template closes the thinking block itself, the model
+never emits the closing tag, and the parser leaves the entire reply in
+`reasoning`. Neither case is fixable with a server-side setting. Send
+neither, read both fields, and a stock OpenAI-compatible client
+behaves.
+
 ## Speed results
 
 Fixed ruler: 64 Japanese prose prompts, `temperature=0`,
 `max_tokens=512`, thinking skipped via an empty assistant continuation.
 Unless noted, C=1 streams all 64 prompts sequentially with per-prompt
 TTFT/TPOT. The shipped `serve/` scripts pin `--max-model-len 204800`,
-`--max-num-seqs 2`, `--gpu-memory-utilization 0.88`, FP8 KV cache; the
+`--max-num-seqs 20`, `--gpu-memory-utilization 0.85`,
+`--enable-prefix-caching`, FP8 KV cache and
+`RAY_memory_usage_threshold=0.99` on both nodes; the
 measured rows below ran the measurement rig instead — almost all of them
 at `--max-model-len 16384` with `--max-num-seqs 20`, the 2026-09-13
 stock baseline at `--max-model-len 131072` with 32 slots and the pair-2
@@ -312,19 +429,22 @@ everywhere else. Each row's exact flags live in the file its
 
 **Why the shipped window is 204800 and the table is not.** 16384 was the
 rig value — the length I first got MTP up on — and it stayed pinned
-through every comparison above. Re-measured on 2026-09-17, the released
-configuration reads 35.15 tok/s at `--max-model-len 204800`
-`--max-num-seqs 2` `--gpu-memory-utilization 0.88` on the same 64-prompt
-ruler, against 35.09 at 16384 / 20 / 0.86: a 12.5x longer window for no
-change I can detect at a run-to-run spread of about 2%. What the longer
-window costs is concurrency, not speed — the shipped scripts ask for 2
-sequence slots rather than 20 because at 307200 the engine did not come
-up with 20, and I have not re-measured that ceiling at 204800. 0.89
-utilization has been refused at boot on this pair. The requant is part
-of why the window fits: at the same 0.88 the stock checkpoint tops out
-at 156672 tokens (vLLM prints that ceiling when it refuses to start),
-while route h boots at 204800. I have not measured anything on a prompt
-near that length — see "What this gate does not measure" above.
+through every comparison above. Re-measured on 2026-09-17, the shipped
+configuration reads 34.78 tok/s on the same 64-prompt ruler — TPOT
+median 28.1 ms, TTFT median 0.313 s, 0 of the 64 requests failed —
+against 35.09 at 16384 / 20 / 0.86. That is a 0.9% difference across a
+12.5x longer window, inside the run-to-run spread of about 2% on
+identical configurations. The longer window does not cost concurrency
+either: 20 sequence slots do come up at 204800 (909 s to READY, then the
+same 0-failure ruler), which they did not at 307200. Utilization is the
+one flag that moved down rather than up — 0.89 has been refused at boot
+on this pair, and at 0.88 the head node ran with about 2.1% of host RAM
+free — close enough to exhaustion that it does not matter what reaps
+the worker first — so the scripts ship 0.85 and leave 8.6%. The requant
+is part of why the window fits: at 0.88 the stock checkpoint tops out at
+156672 tokens (vLLM prints that ceiling when it refuses to start), while
+route h boots at 204800. What the window is worth on prompts that
+actually use it is measured in "Long context, measured" below.
 
 How I count:
 
@@ -441,7 +561,7 @@ re-runs record the same field directly and land on the identical split
 their own. On the stock checkpoint the C=32 aggregate was
 95.08 tok/s over sockets (pair 2, 64 prompts) and 109.03 tok/s over
 RDMA (pair 2, 64 prompts); both of those passes ran with 32 sequence
-slots, which the shipped `--max-num-seqs 2` cannot reproduce, so read
+slots, which the shipped `--max-num-seqs 20` cannot reproduce, so read
 them as rig numbers rather than as what the released scripts do. No
 C=32 row exists for route h yet.
 
@@ -475,6 +595,74 @@ the difference is time per decode cycle and not the draft. Both readings
 stay on record. The spread between them is what one 32-prompt pass can
 do on this machine when something else is touching it, and it is wider
 than the ~2% the 64-prompt ruler shows across re-runs.
+
+## Long context, measured
+
+The probe is `bench/longctx.py`: Japanese filler grown to a target
+length, ten facts planted at head, middle and tail token depths, one
+question each, `temperature=0`, graded by exact code match rather than
+by a judge. The set is `bench/longctx-probe.jsonl`, and every document
+is the shared prefix of its ten questions, so one long prefill is paid
+per length. One pass on the shipped configuration —
+`--max-model-len 204800`, `--max-num-seqs 20`,
+`--gpu-memory-utilization 0.85`, `--enable-prefix-caching`, route h with
+MTP at K=2 over RDMA:
+
+| prompt tokens | needles found | first token, cold | first token, cache warm | prefill |
+|---:|---|---:|---:|---:|
+| 16,345 | 10/10 | 10.02 s | 4.27 s | 1630.6 tok/s |
+| 65,545 | 10/10 | 39.95 s | 2.91 s | 1640.8 tok/s |
+| 130,990 | 10/10 | 79.86 s | 3.15 s | 1640.2 tok/s |
+| 194,544 | 10/10 | 120.04 s | 4.74 s | 1620.6 tok/s |
+
+40 of 40, no depth weaker than another: head 12/12, middle 16/16, tail
+12/12. One reading from a different configuration, kept out of the table
+on purpose: at `--max-model-len 307200` with utilization at 0.88 — not
+what the scripts ship — a single 204,767-token document answered 10/10.
+It needs a window the released scripts do not open, so it is not a row
+above.
+
+This is retrieval, not quality. It says the model still finds a planted
+fact at 194,544 tokens; it says nothing about whether its prose or its
+reasoning hold up there.
+
+Three limits come with the long window.
+
+- **A prompt the size of the window does not fit.** The probe's top
+  stage aims at 190k rather than 200k for a measured reason: a
+  204,754-token document plus `max_tokens=64` is 204,818 against a
+  204,800 limit, and the server returns `HTTP 400`. The engine survives
+  — the next request is answered normally — but that document cannot be
+  asked about. The usable ceiling is the window minus the generation
+  budget minus the chat template.
+- **The first token on a long prompt is slow.** Prefill holds between
+  1620 and 1641 tok/s across all four lengths, so the 194,544-token
+  prompt takes 120.04 s before the first token appears. Nothing is
+  stuck; that is prefill. `--enable-prefix-caching` is in the shipped
+  flags for this reason: pin one long document as the prefix and vary
+  only the question, and every request after the first is an order of
+  magnitude faster — at 130,990 tokens, 79.86 s cold against 3.15 s
+  warm.
+- **Past about 259,000 tokens nothing gets through on this hardware.**
+  Not with a longer `--max-model-len`, not with a lower
+  `--gpu-memory-utilization`, not with a smaller
+  `--max-num-batched-tokens`: host memory runs out and the node's OOM
+  reaper takes the vLLM worker. The `peak activation` figure vLLM prints
+  at boot is measured on an 8192-token dummy run, and the scratch space
+  the sparse-attention indexer wants during a long prefill sits outside
+  the `--gpu-memory-utilization` budget entirely. Dropping utilization
+  from 0.88 to 0.85 moved the death from 62 s into the prefill to 155 s;
+  it did not make the prompt fit.
+
+`RAY_memory_usage_threshold=0.99` is exported on both nodes by
+`serve/start-head.sh` and `serve/start-worker.sh`, and it is not
+optional. Unified memory means `--gpu-memory-utilization` is taken out
+of host RAM, so Ray's own OOM monitor sees the node above its default
+0.95 and kills the largest actor it can find, which is the vLLM TP0
+worker. What you see is `EngineDeadError` — at boot, or in the middle of
+a request — with nothing wrong in the vLLM log; the kill is in the
+raylet log. The two scripts bring up two separate raylets, each with its
+own monitor, so the variable has to be exported on both.
 
 ## What did not work, and when
 
@@ -567,9 +755,10 @@ have measured one.
 - English and other languages. Every probe here is Japanese.
 - Code correctness. Code prompts appear in the speed table and nowhere
   in the quality table.
-- Multi-turn conversations, tool calling, instruction following, long
-  context — the shipped window is 204800 tokens and nothing here was
-  measured on a prompt near it — safety behaviour, and the model with
+- Multi-turn conversations, tool calling, instruction following,
+  long-context quality — the needle probe reaches 194,544 tokens at
+  40/40, but that is retrieval and nothing in the quality table ran on a
+  prompt longer than about 2k — safety behaviour, and the model with
   thinking enabled, which is how this family is normally used.
 - Perplexity on a larger corpus, with a confidence interval. The current
   probe is eight sentences and the code does not keep the per-token
@@ -693,5 +882,11 @@ gate, the runs and the numbers were checked by me before release.
 
 ## License
 
-Apache-2.0, see LICENSE. Model weights are not part of this repository;
-requantize the NVIDIA checkpoint yourself with `requant/requant.py`.
+The code in this repository is Apache-2.0, see LICENSE. The weights are
+a separate matter: they are not part of this repository, and the derived
+checkpoint published on Hugging Face carries the upstream MIT license it
+inherits from `zai-org/GLM-5.3-Flash` rather than Apache-2.0. That
+Hugging Face repository ships the MIT text verbatim alongside a NOTICE
+that names the upstream model, the NVIDIA Model Optimizer base
+quantization and the contributors. To build the weights yourself instead,
+requantize the NVIDIA checkpoint with `requant/requant.py`.

@@ -157,7 +157,7 @@ NCCL/IB (RDMA)、同じ64本の日本語散文プロンプト、`temperature=0`�
 トークン列上の平均負対数尤度を指数化して一つの数値にします。stockと
 候補は、同じサービング中のモデルに対して同一の関数で測ります。
 ゲートは候補/stockの比が <= 1.10であることで、リリースした
-route hはstockの11.94に対して12.54、比1.051でした。サンプルは
+route hはstockの11.938に対して12.543、比1.051でした。サンプルは
 小さいので、これは同等性ではなく大きな劣化の有無を見るものです。
 
 **eval-200をどう採点したか。** eval-200は、このリポジトリに同梱
@@ -193,9 +193,17 @@ perplexity比1.051はstock比5.1%の増加で、宣言したゲートの内側
 (対応あり、項目の約20%が入れ替わると仮定)なので、私が測った
 +0.0067はゼロと区別できません——0.05の本物の後退も同じく区別でき
 ません。0.02というゲートの閾値は、このセットが分解できる細かさより
-細かいのです。stockより本当に0.06-0.08悪いチェックポイントでも、
-通ってしまうほうが多いでしょう。このゲートを「後退が無い」と読むのは
-誤りで、大きな後退を排除するだけです。
+細かいのです。この+-0.08の半幅を正規分布の約0.041というσとして
+読むと、stockより本当に0.06悪いチェックポイントでも約16%は正答率の
+条件を通り、本当に0.08悪いものでも約7%は通ります。この計算が言って
+いないことが二つあります: 0.06と0.08は正答率のパーセントポイントの
+差であって相対の低下率ではないこと(0.447から0.06下がれば0.387で
+あり、6%の低下ではありません)、そして約16% / 約7%は正答率の条件
+だけについての正規近似であって、四条件のゲート全体を通る確率では
+ないことです。
+このゲートはやはり弱いままです——+-0.08の区間は、それが捕まえるはず
+の0.02という閾値より四倍広いのです。このゲートを「後退が無い」と
+読むのは誤りで、大きな後退を排除するだけです。
 
 貪欲サンプリングでの投機デコードは、ターゲットモデルが出したはずの
 トークンだけを受理するように設計されています。したがって原理的には
@@ -209,7 +217,7 @@ perplexity比1.051はstock比5.1%の増加で、宣言したゲートの内側
 <!-- quality:start -->
 | metric | stock | route h | what it means for a user |
 |---|---|---|---|
-| Perplexity, 8-sentence Japanese probe | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
+| Perplexity, 8-sentence Japanese probe | 11.938 | 12.543 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
 | eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
 | eval-200: trap | 13/50 | 16/50 | Trick-question resistance, graded mechanically: an answer passes if it contains a refusal marker and no digits. That rule rewards hedging, so a checkpoint that became more evasive would gain here while losing on reason -- which is the direction this pair of columns actually moved (+3 trap, -5 reason). I did not test whether the two moves share that cause; do not read the +1 net total as 'no change'. |
 | eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
@@ -217,20 +225,28 @@ perplexity比1.051はstock比5.1%の増加で、宣言したゲートの内側
 | eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. The 95% interval on this difference is about +-0.08, which is four times wider than the 0.02 gate threshold. |
 | TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt. The 2% gap is the median of three runs of the same prompt and is the same size as the run-to-run spread I measure on identical configurations, so this probe shows no TTFT regression it could have detected -- it does not show that TTFT is unchanged. No user-perception test was run. |
 | Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. Zero out of 64 is consistent with a true rate of up to about 5% (rule of three), and the detector only catches empty output, repeated-token runs and exactly periodic loops -- it cannot see a fluent answer that is wrong, truncated or off-topic. |
-| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
+| 13-item evaluate suite | -- | -- | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions). It ran on both node pairs on 2026-09-16 and both runs finished, but 4 of the 13 items produced no result on either run: the two agentic tool-use items (3-step tool success, 4th-step final answer) and both 108K long-context items (en, ja) came back blank. The two runs were also not the same configuration -- pair 1 ran with speculative decoding off, pair 2 ran with it on at a 78.0% acceptance rate -- so the 9 items that did produce numbers cannot be read as a route h vs stock comparison, and I do not report them as one here. Agentic tool use and 108K long context therefore remain untested. |
 <!-- quality:end -->
 
 上のどの行も日本語・シングルターン・thinkingオフです。長文脈・並列
-リクエスト・エージェント的なtool利用を覆う唯一の行はpendingの
-13項目スイートで、それが着地するまで、これらの次元はこの
-チェックポイントでは未測定です。
+リクエスト・エージェント的なtool利用を覆う唯一の行——13項目
+スイート——は2026-09-16に両ノード対で実行済みですが、13項目のうち
+4項目がどちらの実行でも結果を出しませんでした:agentic toolの成功、
+agenticの最終回答、統合課題 en 108K、統合課題 ja 108Kです。つまり、
+エージェント的なtool利用と108Kの長文脈はこのチェックポイントでは
+依然として未測定です——スイートが未実行だからではなく、実行しても
+それらを覆う項目が結果を出さなかったからです。両方の実行はroute h対
+stockの同条件比較にもなっていません:pair 1は投機なし、pair 2は
+投機的デコードの受理率78.0%で走っているので、結果が出た項目でさえ、
+二つのチェックポイントの差としては読めません。
 
 **このゲートが測っていないもの。** 上のどの数値も日本語・シングル
 ターン・thinkingオフ・貪欲・文脈2kトークン未満・一度に一リクエスト
 です。このチェックポイントについて、英語やほかの言語、コードの正しさ、
 複数ターンの会話、tool呼び出し(tool列は構造上のゼロです)、指示追従、
-長文脈——出荷するサービング窓は204800トークンですが、上のprobeは
-どれも2kほどに収まります——安全性の挙動、そして
+長文脈での品質——「長文脈、実測」の針プローブは194,544トークンまで
+40問中40問ですが、あれは検索であり、上の品質probeはどれも2kほどに
+収まります——安全性の挙動、そして
 thinkingを有効にした状態——このモデル族が普段使われる形——の
 いずれについても、私は測定を持っていません。再量子化はdense linearと
 lm_headを書き換えるので、そこはまさに、この四つのprobeから後退が
@@ -248,6 +264,28 @@ K・ルーラーでのroute hは1.051で34.47 tok/sでした。ゲートの
 1.051は測定前に宣言した上限の内側なので、私はhを出しました。
 速度を渡して差分の小ささを取りたいなら、gはフラグ一つの変更です。
 
+## 立てる前に: 認証は無く、全インターフェースで待ち受けます
+
+`serve/start-head.sh` はAPIを `--host 0.0.0.0` で上げるので、ノードの
+全インターフェースで待ち受けます。サーバはAPIキーを検査しません——
+ポートに届くクライアントは誰でもリクエストを送れます。このファイルの
+残りは、あなたがこれを読んだ前提で書いてあります。
+
+- この構成は信頼できるネットワークの内側に留め、ポートを公開
+  ネットワークへ晒さないでください。
+- アクセス制御は各自で用意するものです。ノードの外から届く必要が
+  あるなら、自分のファイアウォール規則を前段に置き、通信に必要なら
+  認証とTLSを持つプロキシも置いてください。
+- Rayの管理ポートと、二台のノードが互いに使うポートはAPIのポート
+  ではなく、それぞれ別に隔離が要ります。出荷スクリプトはRayの
+  ダッシュボードを127.0.0.1に束縛していますが、それは複数あるうちの
+  一つのポートにすぎません: APIの前に認証を置いてもRayは保護され
+  ません。
+- この構成は十分に長いプロンプトでホストのメモリを枯渇させられます
+  (どこでそうなるかは下の「長文脈、実測」で測っています)ので、開いた
+  ままのエンドポイントは、読まれる経路であるだけでなくノードを
+  落とす経路です。
+
 ## 再現方法
 
 完全なランブック(前提条件・正確なコマンド・予想所要時間・ディスク
@@ -257,6 +295,21 @@ RDMAイメージとオーバーレイをビルドし、`serve/start-head.sh` と
 `serve/start-worker.sh` でサービングし、`requant/verify.py check`
 でゲートを通し、`bench/measure.py` で測定します。プロンプト集合に
 ついては[bench/README.md](bench/README.md)に書いてあります。
+
+**ヘッドラインの速度を再現するには `MTP_DIR` の設定が要ります。**
+35.09 tok/sの行はroute hにMTPドラフトをK=2で載せたもので、ドラフトは
+`MTP_DIR` がドラフトのディレクトリを指しているときにだけロードされ
+ます。`serve/serve.env.example` はその行をコメントアウトのまま、値も
+`CHANGEME` で同梱しています——パスは機械ごとに違うので意図的に
+そうしてあります——そのため例のファイルを出荷されたまま使うと
+サーバはドラフト無しで立ち、ドラフト無しの速度でデコードします:
+同じパスでドラフトありが34.99 tok/s(TPOT中央値27.9 ms、TTFT中央値
+0.309 s、受理率0.6223、64件中失敗0件)だったのに対し、そのやり方では
+28.28 tok/sでした。上の27.15のドラフト無しの行と+4%で整合します。
+測定の前に、その行のコメントを外して自分のパスを入れてください。
+ドラフトのディレクトリはstockチェックポイントから
+`requant/build-mtp-draft.py` が作ります。その手順は
+[AGENTS.md](AGENTS.md)にあります。
 
 ## 公開したランブックからの再現
 
@@ -291,14 +344,79 @@ RDMAイメージとオーバーレイをビルドし、`serve/start-head.sh` と
 どれもクリーン実行の失敗が見つけたもので、私自身のツリーの内側からは
 一つも見えていませんでした。
 
+## 立てたサーバの使い方
+
+`serve/start-head.sh` は `PORT`(既定 8000)にOpenAI互換のAPIを
+載せます。このAPIの三つの性質はserve行が決めていて、外からは
+推測できないので、ここに書いておきます。
+
+**モデルIDは `GLM-5.3-Flash-NVFP4-Wabi` です。** スクリプトが
+`--served-model-name` を渡すので、リクエストに載せるのは——
+チェックポイントのパスではなく——この文字列です。ほかのIDは404で
+返ります。`/v1/models` はこのIDをサービング窓とともに返します:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models
+```
+
+headノードからの、完結したリクエスト:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "GLM-5.3-Flash-NVFP4-Wabi",
+       "messages": [{"role": "user", "content": "Hello."}],
+       "max_tokens": 128}'
+```
+
+OpenAI互換クライアントに要る設定は三つだけです: ベースURL
+`http://127.0.0.1:8000/v1`(クライアントが別のマシンで動くなら
+localhostのところをheadのアドレスに)、モデル
+`GLM-5.3-Flash-NVFP4-Wabi`、そしてAPIキーは任意の文字列——サーバは
+検査しません。私はまさにその設定にしたコーディングエージェントから、
+このサーバを使っています。
+
+**ツール呼び出しは有効です。** serve行は
+`--enable-auto-tool-choice --tool-call-parser glm45` を持っているので、
+クライアントは `tools` を送れて、構造化された `tool_calls` が返ります。
+この二つのフラグが無いと、`tools` を載せたリクエストはHTTP 400で
+断られます:
+
+```
+"auto" tool choice requires --enable-auto-tool-choice and
+--tool-call-parser to be set
+```
+
+**`content` だけでなく `reasoning` も読むこと、そしてthinkingを
+切ろうとしないこと。** `--reasoning-parser glm45` はモデルのthinkingを
+メッセージ上の別フィールド `reasoning` へ移し、`content` には回答を
+残します。オフスイッチに見えるつまみは、オフスイッチではありません:
+
+| クライアントが送るもの | `reasoning` | `content` |
+|---|---|---|
+| 何も送らない——既定 | thinking | 回答 |
+| `chat_template_kwargs: {"enable_thinking": false}` | 空 | thinkingと回答が地続き |
+| `continue_final_message` 付きの空のassistantターン | 応答全体 | 空 |
+
+`enable_thinking: false` が止めるのはモデルではなくパーサです。モデルは
+thinkingを続け、その思考は読み手の目に触れる `content` に落ちます。
+空assistantの継続——ルーラーでthinkingをスキップするために
+`bench/measure.py` が使う流儀——は同じ仕組みの裏側です: テンプレートが
+thinkingブロックを自分で閉じるので、モデルは閉じタグを一度も出さず、
+パーサは応答全体を `reasoning` に残します。どちらもサーバ側の設定では
+直りません。どちらも送らず、両方のフィールドを読めば、素のOpenAI互換
+クライアントはそのまま動きます。
+
 ## 速度結果
 
 固定ルーラー: 64本の日本語散文プロンプト、`temperature=0`、
 `max_tokens=512`、空のassistant継続でthinkingをスキップ。
 特記が無ければC=1が64プロンプトすべてを逐次ストリームし、
 プロンプトごとのTTFT/TPOTを取ります。同梱の `serve/` スクリプトは
-`--max-model-len 204800`、`--max-num-seqs 2`、
-`--gpu-memory-utilization 0.88`、FP8 KVキャッシュを固定します。
+`--max-model-len 204800`、`--max-num-seqs 20`、
+`--gpu-memory-utilization 0.85`、`--enable-prefix-caching`、
+FP8 KVキャッシュ、そして両ノードでの
+`RAY_memory_usage_threshold=0.99` を固定します。
 下の測定行はそうではなく測定用の設定で走っています――ほとんどが
 `--max-model-len 16384`・`--max-num-seqs 20`、2026-09-13のstock
 ベースラインは `--max-model-len 131072` でスロット32本、pair 2の
@@ -310,19 +428,20 @@ stock RDMA行は16384でスロット32本。c1pairとroute hの行は
 
 **なぜ出荷する窓は204800で、表はそうでないのか。** 16384は測定用の
 値で――MTPを最初に立ち上げられた長さです――上のどの比較でも留め置かれ
-たままでした。2026-09-17に測り直したところ、公開する構成は
-`--max-model-len 204800` `--max-num-seqs 2`
-`--gpu-memory-utilization 0.88` で同じ64プロンプトのルーラーに対し
-35.15 tok/s、16384 / 20 / 0.86 での35.09に対して、窓を12.5倍にしても
-約2%の実行ごとのばらつきの中で違いを検出できません。長い窓の代償は
-速度ではなく同時実行です――同梱スクリプトがスロットを20本ではなく
-2本要求するのは、307200でスロット20本ではエンジンが立ち上がらな
-かったからで、204800でその上限は測り直していません。0.89の利用率は
-このペアで起動を拒否された実績があります。窓が入る理由の一つは再量子化
-です: 同じ0.88で公式チェックポイントは156672トークンが上限(起動を
-拒否するときvLLMがその上限を印字します)、route hは204800で起動します。
-この長さに近いプロンプトでは何も測っていません——上の「このゲートが
-測っていないもの」を見てください。
+たままでした。2026-09-17に測り直したところ、出荷する構成は同じ64
+プロンプトのルーラーに対し34.78 tok/s、TPOT中央値28.1 ms、TTFT
+中央値0.313 s、リクエスト64件のうち失敗0件でした。16384 / 20 / 0.86
+での35.09に対して0.9%の差で、窓は12.5倍になっていますが、同一構成
+での実行ごとのばらつき約2%の中です。長い窓は同時実行も削りません:
+スロット20本は204800で立ち上がります(READYまで909秒、そのあと同じ
+ルーラーで失敗0件)。307200では立ち上がりませんでした。下げた
+フラグは利用率だけです――0.89はこのペアで起動を拒否された実績が
+あり、0.88ではheadノードのホストRAMの空きが約2.1%で、何が先に刈るかに
+関わらず枯渇に近すぎます。そこでスクリプトは0.85を出荷し、8.6%を
+残します。窓が入る理由の一つは再量子化です: 0.88で公式
+チェックポイントは156672トークンが上限(起動を拒否するときvLLMが
+その上限を印字します)、route hは204800で起動します。窓を実際に使う
+プロンプトで何が出るかは、下の「長文脈、実測」で測っています。
 
 数え方:
 
@@ -439,7 +558,7 @@ K=2を分離できていません。K=3は同じペア・同じtransportで31.98
 います。stockチェックポイントでのC=32集計は、socketsで
 95.08 tok/s(pair 2、64プロンプト)、RDMAで109.03 tok/s(pair 2、
 64プロンプト)でした。この二本はどちらもスロット32本で走っており、
-出荷する `--max-num-seqs 2` では再現できません。公開スクリプトが
+出荷する `--max-num-seqs 20` では再現できません。公開スクリプトが
 出す値ではなく測定用の値として読んでください。route hのC=32行は
 まだありません。
 
@@ -473,6 +592,71 @@ parallelオン、各集合はそれぞれ独立したパスとしてC=1で測定
 ありません。どちらの値も記録に残します。二つの開きは、ほかの何かが機械に
 触れているときに一回の32プロンプトのパスが出しうる幅で、64プロンプトの
 ルーラーが再実行の間で見せる~2%よりも広いものです。
+
+## 長文脈、実測
+
+プローブは `bench/longctx.py` です: 日本語の詰め物を目標の長さまで
+伸ばし、先頭・中間・末尾のトークン深度に十個の事実を埋め、それぞれ
+一問ずつ聞きます(`temperature=0`)。採点は審判モデルではなく、
+コードの完全一致です。セットは `bench/longctx-probe.jsonl` で、
+どの文書もその十問の共通prefixなので、長いprefillは各段で一度しか
+払いません。出荷構成 — `--max-model-len 204800`、
+`--max-num-seqs 20`、`--gpu-memory-utilization 0.85`、
+`--enable-prefix-caching`、route hにMTPをK=2で載せてRDMA — での
+一度の通しがこれです:
+
+| プロンプトトークン | 見つけた針 | 初回の最初のトークン | キャッシュ後 | prefill |
+|---:|---|---:|---:|---:|
+| 16,345 | 10/10 | 10.02 s | 4.27 s | 1630.6 tok/s |
+| 65,545 | 10/10 | 39.95 s | 2.91 s | 1640.8 tok/s |
+| 130,990 | 10/10 | 79.86 s | 3.15 s | 1640.2 tok/s |
+| 194,544 | 10/10 | 120.04 s | 4.74 s | 1620.6 tok/s |
+
+40問中40問、深さによる弱いところもありません: 先頭12/12、中間16/16、
+末尾12/12。別構成での測定がひとつあり、意図して表から外しています:
+`--max-model-len 307200`・利用率0.88 — 公開スクリプトが出すもの
+ではありません — で、204,767トークンの文書一本が10/10でした。公開
+スクリプトが開かない窓を必要とするので、上の行にはしません。
+
+これは検索であって品質ではありません。194,544トークンでも埋めた事実を
+見つけられる、とは言えます。そこで散文や推論が保つかどうかは何も
+言えません。
+
+長い窓には制約が付いてきます。
+
+- **窓と同じ大きさのプロンプトは入りません。** プローブの最上段が
+  200kではなく190kを狙っているのは実測に基づく理由からです:
+  204,754トークンの文書に `max_tokens=64` を足すと204,818で、上限の
+  204,800を超え、サーバは `HTTP 400` を返します。エンジンは生きて
+  いて — 次のリクエストは普通に答えます — その文書について聞けない
+  だけです。実用上の上限は、窓から生成の予算とチャットテンプレート分
+  を引いた長さです。
+- **長いプロンプトの最初のトークンは遅いです。** prefillは四段すべてで
+  1620〜1641 tok/sに収まるので、194,544トークンのプロンプトは最初の
+  トークンが出るまで120.04秒かかります。固まっているのではなく、
+  prefill中です。`--enable-prefix-caching` を出荷フラグに入れたのは
+  このためです: 長い文書を一本先頭に固定して設問だけ替えれば、初回の
+  次からは桁が変わります — 130,990トークンで、初回79.86秒に対し
+  キャッシュ後3.15秒。
+- **約259,000トークンを超えると、このハードでは何も通りません。**
+  `--max-model-len` を伸ばしても、`--gpu-memory-utilization` を
+  下げても、`--max-num-batched-tokens` を縮めてもです: ホストの
+  メモリが尽き、ノードのOOM狩りがvLLMのworkerを持っていきます。
+  vLLMが起動時に印字する `peak activation` は8192トークンのダミー
+  実行で測った値で、長文prefillで疎attentionのindexerが要求する
+  一時領域は `--gpu-memory-utilization` の予算の外にあります。
+  利用率を0.88から0.85へ下げても、死ぬまでがprefill開始62秒から
+  155秒へ延びただけで、プロンプトは通りませんでした。
+
+`RAY_memory_usage_threshold=0.99` は `serve/start-head.sh` と
+`serve/start-worker.sh` が両ノードでexportしていて、これは省略でき
+ません。ユニファイドメモリでは `--gpu-memory-utilization` がホスト
+RAMから取られるため、Ray自身のOOMモニタはノードが既定の0.95を越えた
+と見て、見つけられる最大のアクター、つまりvLLMのTP0 workerを殺します。
+見えるのは `EngineDeadError` だけで — 起動中にも、リクエストの途中にも
+出ます — vLLMのログには何も異常がなく、kill行はraylet側のログに
+あります。二つのスクリプトはそれぞれ別のrayletを起こし、モニタも
+raylet ごとに持つので、この変数は両方でexportする必要があります。
 
 ## うまくいかなかったものと時期
 
@@ -564,9 +748,10 @@ Terminal-Bench 2.1は0.8258 -> 0.8315です。これが信頼できる土台に
 - 英語とほかの言語。ここにあるprobeはすべて日本語です。
 - コードの正しさ。コードのプロンプトは速度の表には出てきますが、品質の表
   には出てきません。
-- 複数ターンの会話、tool呼び出し、指示追従、長文脈——出荷する窓は
-  204800トークンですが、それに近い長さのプロンプトでは何も測って
-  いません——安全性の挙動、そしてthinkingを有効にしたモデル。この
+- 複数ターンの会話、tool呼び出し、指示追従、長文脈での品質——針の
+  プローブは194,544トークンまで届いて40問中40問ですが、あれは検索
+  であり、品質の表は2kほどより長いプロンプトでは何も走っていません
+  ——安全性の挙動、そしてthinkingを有効にしたモデル。この
   族が普段使われる形です。
 - より大きなコーパスでのperplexityと、その信頼区間。いまのprobeは八つの
   文で、コードはトークンごとの値を保持しないので、比に区間が付いていません。
@@ -682,6 +867,11 @@ tests/                      run-tests.sh (offline smoke) +
 
 ## License
 
-Apache-2.0。LICENSEを参照してください。モデルの重みはこの
-リポジトリに含みません。`requant/requant.py` でNVIDIAチェック
-ポイントを各自で再量子化してください。
+このリポジトリのコードはApache-2.0です。LICENSEを参照してください。
+重みは別の話です: このリポジトリには含まれておらず、Hugging Faceで
+公開している派生チェックポイントはApache-2.0ではなく、
+`zai-org/GLM-5.3-Flash` から受け継いだ上流のMITライセンスに従います。
+そのHugging FaceリポジトリにはMITの原文を逐語で同梱し、上流モデル・
+NVIDIA Model Optimizerによる基底量子化・寄与者を記したNOTICEを
+添えています。自分で重みを作る場合は、`requant/requant.py` で
+NVIDIAチェックポイントを再量子化してください。

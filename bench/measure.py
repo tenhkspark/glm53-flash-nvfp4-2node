@@ -14,8 +14,9 @@ Aggregate tok/s = sum(completion_tokens) / wall time. Acceptance comes
 from the server's /metrics spec-decode counters read before and after
 the whole pass.
 
-Usage: python3 measure.py --url http://127.0.0.1:8888 --label control \
-         --prompts prompts-64.jsonl --outdir results
+Usage (paths are relative to the repo root):
+  python3 bench/measure.py --url http://127.0.0.1:8000 --label control \
+      --prompts bench/prompts-64.jsonl --outdir results
 """
 import argparse
 import json
@@ -123,8 +124,10 @@ def run_stream_one(url, model, prompt, max_tokens):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8888")
-    ap.add_argument("--model", default="GLM-5.3-Flash-NVFP4")
+    # matches serve/serve.env.example PORT=8000
+    ap.add_argument("--url", default="http://127.0.0.1:8000")
+    # matches serve/start-head.sh --served-model-name
+    ap.add_argument("--model", default="GLM-5.3-Flash-NVFP4-Wabi")
     ap.add_argument("--label", required=True)
     ap.add_argument("--prompts", required=True)
     ap.add_argument("--outdir", default=".")

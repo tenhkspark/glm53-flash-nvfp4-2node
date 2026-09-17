@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+#
+# Modified by the author of this repository: this file is the serving
+# image's own vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
+# with support added for no-rope MLA (qk_rope_head_dim == 0), which the
+# stock file rejects. Everything else is upstream and unchanged.
 """SM120 implementation variant for ``FLASHINFER_MLA_SPARSE_SM120``."""
 
 from typing import TYPE_CHECKING, cast

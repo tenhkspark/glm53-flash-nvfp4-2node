@@ -6,22 +6,28 @@ set -u
 cd "$(dirname "$0")/.."
 fail=0
 say() { printf '%-56s %s\n' "$1" "$2"; }
+# scratch for stderr captures, and a cache prefix so py_compile below
+# writes its .pyc files outside the repo (no __pycache__ in the tree)
+err=$(mktemp "${TMPDIR:-/tmp}/run-tests.XXXXXX")
+pycache=$(mktemp -d "${TMPDIR:-/tmp}/run-tests-pyc.XXXXXX")
+export PYTHONPYCACHEPREFIX="$pycache"
+trap 'rm -rf "$err" "$pycache"' EXIT
 
 # 1. every python file compiles
 for f in $(find . -name '*.py' -not -path './overlays/_*/*'); do
-  if python3 -m py_compile "$f" 2>/tmp/rtc.err; then
+  if python3 -m py_compile "$f" 2>"$err"; then
     say "py_compile $f" ok
   else
-    say "py_compile $f" FAIL; sed 's/^/    /' /tmp/rtc.err | head -3; fail=1
+    say "py_compile $f" FAIL; sed 's/^/    /' "$err" | head -3; fail=1
   fi
 done
 
 # 2. every shell file parses
 for f in $(find . -name '*.sh' -not -path './overlays/_*/*'); do
-  if bash -n "$f" 2>/tmp/rtc.err; then
+  if bash -n "$f" 2>"$err"; then
     say "bash -n $f" ok
   else
-    say "bash -n $f" FAIL; sed 's/^/    /' /tmp/rtc.err | head -3; fail=1
+    say "bash -n $f" FAIL; sed 's/^/    /' "$err" | head -3; fail=1
   fi
 done
 
@@ -125,7 +131,7 @@ else
   printf '%s\n' "$out" | tail -10 | sed 's/^/    /'
 fi
 # 7d. MTP_K>=4 refused at env validation
-sed 's/$/\nMTP_K=4/' "$tmp/good.env" > "$tmp/k4.env"
+{ cat "$tmp/good.env"; printf 'MTP_K=4\n'; } > "$tmp/k4.env"
 if scripts/agent-run.sh --env "$tmp/k4.env" --dry-run 2>&1 \
     | grep -q "STEP 1 FAIL: MTP_K=4"; then
   say "agent-run MTP_K=4 refused" ok
@@ -275,8 +281,9 @@ else
 fi
 # 7e. verify-result.py: inside band -> PASS, outside -> FAIL
 cat > "$tmp/measure-x.json" <<'EOF'
-{"label": "t", "levels": [{"c": 1, "agg_tok_s": 24.6, "tpot_median_ms": 41.0,
-  "ttft_median_s": 0.39, "fails": 0}], "acceptance": {"acceptance": 0.62}}
+{"label": "t", "levels": [{"c": 1, "prompts": 64, "agg_tok_s": 35.4,
+  "tpot_median_ms": 28.2, "ttft_median_s": 0.32, "fails": 0}],
+ "acceptance": {"acceptance": 0.62}}
 EOF
 if python3 scripts/verify-result.py --result "$tmp/measure-x.json" \
     --ref h-rdma-mtp 2>&1 | grep -q "VERIFY PASS"; then
@@ -295,6 +302,20 @@ if python3 scripts/verify-result.py --result "$tmp/measure-x.json" \
 else
   say "verify-result out-of-band" ok
 fi
+# a run where prompts died is in-band on speed but must still FAIL:
+# tok/s is computed over the prompts that finished
+python3 - "$tmp/measure-x.json" <<'EOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["levels"][0].update({"agg_tok_s": 35.4, "prompts": 64, "fails": 58})
+json.dump(d, open(sys.argv[1], "w"))
+EOF
+if python3 scripts/verify-result.py --result "$tmp/measure-x.json" \
+    --ref h-rdma-mtp >/dev/null 2>&1; then
+  say "verify-result partial run" "FAIL (rc=0)"; fail=1
+else
+  say "verify-result partial run" ok
+fi
 rm -rf "$tmp"
 
 # 8. check-md-invariants.py: identical input passes, a changed number fails
@@ -311,6 +332,29 @@ else
   say "md-invariants detects change" ok
 fi
 rm -rf "$tmp"
+
+# 9. every mktemp template ends in >=3 trailing X: GNU mktemp rejects
+#    shorter templates (the cleanroom-h-boot-k STEP 9 failure,
+#    2026-09-16). A call with no template argument uses mktemp's own
+#    default and passes. Comment lines are excluded from the scan.
+mtp_bad=$(for f in $(find . -name '*.sh' -not -path './overlays/_*/*'); do
+  grep -vE '^[[:space:]]*#' "$f" \
+    | grep -oE 'mktemp[[:space:]][^|&;)]*' \
+    | while IFS= read -r call; do
+        tpl=${call##*[[:space:]]}
+        tpl=${tpl#[\"\']}; tpl=${tpl%[\"\']}
+        case "$tpl" in
+          -*|*XXX) ;;
+          *) printf '%s: %s\n' "$f" "$call" ;;
+        esac
+      done
+done)
+if [ -z "$mtp_bad" ]; then
+  say "mktemp-template XXX check" ok
+else
+  say "mktemp-template XXX check" FAIL
+  printf '%s\n' "$mtp_bad" | sed 's/^/    /'; fail=1
+fi
 
 echo
 [ "$fail" = 0 ] && { echo "ALL TESTS PASS"; exit 0; }

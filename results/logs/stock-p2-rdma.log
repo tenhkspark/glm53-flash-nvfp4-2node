@@ -1,6 +1,7 @@
 # stock, no draft, pair 2, NCCL/IB (RDMA), expert-parallel on — measured 2026-09-16 JST
 # serve flags: --max-num-seqs 32 --max-model-len 16384 --gpu-memory-utilization 0.85 --enable-expert-parallel --enable-ep-weight-filter; NCCL over IB image; no draft
 # sanitised measure.py LEVEL excerpt (C=1 row is the published cell; C=4/16/32 ladder lines kept for the c32_tok_s column)
+# weighted TPOT (sum(wall-ttft)/sum(tokens-1) across the C=1 pass's 64 per-prompt rows, computed from the pre-sanitisation factory log; the per-prompt rows themselves are stripped from this excerpt): 69.29 ms
 LEVEL label=arm-nccl-ib-arm-d C=1 prompts=8 tok/s=14.32 tokens=4096 wall=286.02s fails=0 tpot_med_ms=69.3 ttft_med_s=0.349
 LEVEL label=arm-nccl-ib-arm-d C=4 prompts=16 tok/s=40.72 tokens=8192 wall=201.17s fails=0
 LEVEL label=arm-nccl-ib-arm-d C=16 prompts=32 tok/s=84.83 tokens=16384 wall=193.14s fails=0

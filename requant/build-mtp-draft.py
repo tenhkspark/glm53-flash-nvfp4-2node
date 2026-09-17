@@ -55,6 +55,18 @@ def main():
     for k in (embed_key, head_key):
         if k not in wm:
             sys.exit(f"FAIL: {k} not in the index")
+    # The draft needs a BF16 head. A requantized checkpoint (route h and
+    # anything else that touches lm_head) stores it packed as uint8, and
+    # copying that through would produce a draft that loads but is wrong.
+    # Point --target at the stock NVFP4 checkpoint.
+    with safe_open(os.path.join(src, wm[head_key]), framework="pt") as f:
+        head_dtype = str(f.get_slice(head_key).get_dtype())
+    if "BF16" not in head_dtype.upper() and "BFLOAT" not in head_dtype.upper():
+        sys.exit(
+            f"FAIL: {head_key} is {head_dtype}, not bfloat16. --target must be "
+            "the stock NVFP4 checkpoint, not a requantized one: the draft "
+            "needs an unpacked head."
+        )
     rename = {
         embed_key: f"{PREFIX}embed_tokens.weight",
         head_key: f"{PREFIX}shared_head.head.weight",

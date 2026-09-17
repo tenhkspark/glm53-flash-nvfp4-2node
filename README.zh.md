@@ -137,7 +137,7 @@ Hugging Face 和 GitHub 上看到你的版本。
 把八个句子中实际提示 token 的对数概率累加起来,对这一条汇总的
 token 流取平均负对数似然,再取指数,得到一个数字。stock 与候选
 用同一个函数、对同一个已服务的模型测量,门限是候选/stock 的比值
-<= 1.10——发布的 route h 得到 12.54,stock 为 11.94,比值 1.051。
+<= 1.10——发布的 route h 得到 12.543,stock 为 11.938,比值 1.051。
 样本很小,所以这只检查是否有严重退化,而不是检查持平。
 
 **eval-200 是怎么评分的。** eval-200 是随本仓库提供的一组固定的
@@ -165,8 +165,14 @@ perplexity 比 1.051 是相比 stock 增加 5.1%——在声明的门限之内,
 实际评分的 150 个有效项上移动了 +0.0067。150 项的集合在 95% 置信度
 下只能把准确率分辨到约 +-0.08(配对,假设约 20% 的项会翻转),所以
 我测到的 +0.0067 与零无法区分——真实退化 0.05 也同样无法区分。0.02
-的门限阈值比这个集合能分辨的粒度更细:一个真的比 stock 差 0.06-0.08
-的检查点,多半仍然能通过它。把这道门限读成"没有退化"是错的;它只
+的门限阈值比这个集合能分辨的粒度更细:把 +-0.08 这个半宽当作约 0.041
+的正态 sigma 来读,一个真的比 stock 差 0.06 的检查点仍有约 16% 的概率
+通过准确率这一条,差 0.08 的则有约 7%。这个算术不说明两件事:0.06 与
+0.08 是准确率的百分点,不是相对下降(0.447 往下 0.06 是 0.387,而不是
+下降 6%);约 16% / 约 7% 是单独针对准确率这一条的正态近似,不是通过
+四项复合门限整体的概率。
+这道门限在这里仍然是弱的——+-0.08 的区间对 0.02 的阈值,比它本该
+抓住的东西宽四倍。把这道门限读成"没有退化"是错的;它只
 排除了大的退化。
 
 在贪心采样下,投机解码的设计是只接受目标模型本会产生的 token,
@@ -180,7 +186,7 @@ perplexity 比 1.051 是相比 stock 增加 5.1%——在声明的门限之内,
 <!-- quality:start -->
 | metric | stock | route h | what it means for a user |
 |---|---|---|---|
-| Perplexity, 8-sentence Japanese probe | 11.94 | 12.54 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
+| Perplexity, 8-sentence Japanese probe | 11.938 | 12.543 (ratio 1.051 = +5.1%) | How surprised the model is by the probe text; +5.1% is a real but small regression inside the declared 1.10 gate. The probe is 249 characters of Japanese written for this test -- nothing was held out from training, and a sample this small checks for gross degradation, not for parity. |
 | eval-200: reason | 32/50 | 27/50 | Multi-step reasoning items solved; -5 of 50 on a 50-item column -- too few items to separate a real regression from noise. |
 | eval-200: trap | 13/50 | 16/50 | Trick-question resistance, graded mechanically: an answer passes if it contains a refusal marker and no digits. That rule rewards hedging, so a checkpoint that became more evasive would gain here while losing on reason -- which is the direction this pair of columns actually moved (+3 trap, -5 reason). I did not test whether the two moves share that cause; do not read the +1 net total as 'no change'. |
 | eval-200: tool | 0/50 | 0/50 | Tool-call items score zero on both checkpoints -- the prompts never name a callable tool, so the column is 0 by construction and cannot judge either side. |
@@ -188,18 +194,25 @@ perplexity 比 1.051 是相比 stock 增加 5.1%——在声明的门限之内,
 | eval-200: total | 67/200 | 68/200 (+0.005 acc) | Overall accuracy moved +0.005 raw (+0.0067 on the 150 live items the gate scores, tool floor excluded), inside the declared gate; by itself it does not prove equivalence. The 95% interval on this difference is about +-0.08, which is four times wider than the 0.02 gate threshold. |
 | TTFT, ~2000-token probe | 2.380 s | 2.436 s (x1.02) | Delay before the first token on a long prompt. The 2% gap is the median of three runs of the same prompt and is the same size as the run-to-run spread I measure on identical configurations, so this probe shows no TTFT regression it could have detected -- it does not show that TTFT is unchanged. No user-perception test was run. |
 | Degenerate outputs, 64-prompt ruler | 0 | 0 | Empty or looping completions; zero on both sides. Zero out of 64 is consistent with a true rate of up to about 5% (rule of three), and the detector only catches empty output, repeated-token runs and exactly periodic loops -- it cannot see a fluent answer that is wrong, truncated or off-topic. |
-| 13-item evaluate suite | -- | pending | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions); queued on this configuration -- this row fills in when it lands. |
+| 13-item evaluate suite | -- | -- | The end-to-end serve evaluation (short/long decode, parallel-4, agentic tool-use, long-context, trick questions). It ran on both node pairs on 2026-09-16 and both runs finished, but 4 of the 13 items produced no result on either run: the two agentic tool-use items (3-step tool success, 4th-step final answer) and both 108K long-context items (en, ja) came back blank. The two runs were also not the same configuration -- pair 1 ran with speculative decoding off, pair 2 ran with it on at a 78.0% acceptance rate -- so the 9 items that did produce numbers cannot be read as a route h vs stock comparison, and I do not report them as one here. Agentic tool use and 108K long context therefore remain untested. |
 <!-- quality:end -->
 
 上面每一行都是日语、单轮、thinking 关闭。唯一能覆盖长上下文、并发
-请求和 agentic 工具调用的是那套还在 pending 的 13 项套件;在它落地
-之前,这些维度在这个检查点上都未经测试。
+请求和 agentic 工具调用的那一行——13 项套件——已经在 2026-09-16 于
+两对节点上跑过了,但 13 项里有 4 项在两次运行中都没有出结果:agentic
+工具成功、agentic 最终回答、综合任务 en 108K、综合任务 ja 108K。
+所以 agentic 工具调用和 108K 长上下文在这个检查点上仍未经测量——
+不是因为套件还没跑,而是因为跑了之后覆盖它们的那几项没有出结果。
+这两次运行也不是 route h 对 stock 的同条件比较:pair 1 没开投机,
+pair 2 用了投机解码、接受率 78.0%,所以哪怕是出了结果的项目,也不能
+读作两个检查点之间的差异。
 
 **这道门限没有测什么。** 上面每个数字都是日语、单轮、thinking
 关闭、贪心、上下文不到 2k token、一次一条请求。我没有测过这个检查点
 在英语或任何其他语言上的表现,没有测过代码正确性、多轮对话、工具
-调用(tool 列是结构性的零)、指令遵循、长上下文——出货的服务窗口是
-204800 token,但上面每一项探针都只有 2k 左右——
+调用(tool 列是结构性的零)、指令遵循、长上下文下的质量——"长上下文,
+实测"里的针探针到 194,544 token 仍是 40 题里 40 题,但那是检索,而
+上面每一项质量探针都只有 2k 左右——
 安全行为,也没有测过开启 thinking 的情况——而这正是这个
 模型家族通常的用法。重新量化改写的是 dense linear 和 lm_head,所以
 那里恰恰是退化可能躲过这四项探针的地方。如果你依赖其中任何一项,
@@ -216,6 +229,23 @@ pair 2 上经 RDMA、MTP K=2、同一把 64 条提示的标尺,route g 测得
 之前声明的上界之内。如果你更愿意用速度去换更小的质量差,g 只是
 改一个 flag。
 
+## 起服务之前:没有认证,监听全部接口
+
+`serve/start-head.sh` 用 `--host 0.0.0.0` 把 API 拉起来,所以它在节点的
+每一个接口上监听,而且服务端不检查任何 API key——任何能连到这个端口的
+客户端都能发请求。本文件余下的部分都假定你已经读过这一段。
+
+- 把这套配置放在你信任的网络里,不要把端口暴露到公开网络。
+- 访问控制要由你自己提供。如果这个端点必须从节点之外可达,请在它前面
+  放上你自己的防火墙规则;如果流量需要认证或 TLS,就再放一个带认证的
+  代理。
+- Ray 的管理端口,以及两台节点彼此之间用的端口,都不是 API 端口,需要
+  各自隔离。出货脚本把 Ray dashboard 绑在 127.0.0.1 上,但那只是其中
+  一个端口:给 API 加上认证并不能保护 Ray。
+- 在这套配置上,足够长的提示能把主机内存耗尽(下面的"长上下文,实测"
+  测了它发生在哪里),所以一个开着不管的端点,不只是能被读,还能被用来
+  把节点搞停。
+
 ## 如何复现
 
 完整的操作手册——前提条件、精确命令、预期耗时和磁盘需求——在
@@ -224,6 +254,17 @@ pair 2 上经 RDMA、MTP K=2、同一把 64 条提示的标尺,route g 测得
 与 `serve/start-worker.sh` 起服务,用 `requant/verify.py check`
 过门限,再用 `bench/measure.py` 测量。提示集的说明见
 [bench/README.md](bench/README.md)。
+
+**要复现 headline 的速度,需要设置 `MTP_DIR`。** 35.09 tok/s 那一行是
+route h *加上* K=2 的 MTP draft,而这个 draft 只有在 `MTP_DIR` 指向一个
+draft 目录时才会被加载。`serve/serve.env.example` 里那一行是注释掉的,
+路径写着 `CHANGEME`——这是故意的,因为路径因机器而异——所以照出货时的
+样子从这个示例起的服务,是没有 draft 的,解码速度也是无 draft 的速度:
+我这样测到 28.28 tok/s,与上面 27.15 的无 draft 行相差 +4%,一致;同一
+趟里带上 draft 则是 34.99 tok/s——TPOT 中位数 27.9 ms,TTFT 中位数
+0.309 s,接受率 0.6223,64 条请求里失败 0 条。测量之前请把那一行的注释
+去掉,并填上你自己的路径。`requant/build-mtp-draft.py` 从 stock 检查点
+构建 draft 目录;[AGENTS.md](AGENTS.md) 给出了这一步。
 
 ## 从已发布的操作手册复现
 
@@ -251,13 +292,73 @@ pair 上已经放着发布用的 route-h 检查点,顶替了下载,所以这项�
 驱动脚本做七处修正,列在下面的"哪些没有成功,以及时间"里;每一处
 都是靠这次干净运行的失败发现的,从我自己的树里一处都看不见。
 
+## 使用已启动的服务
+
+`serve/start-head.sh` 在 `PORT`(默认 8000)上提供一个 OpenAI 兼容的
+API。这个 API 的三个性质由 serve 那一行决定,从外面猜不出来,所以写在
+这里。
+
+**模型 id 是 `GLM-5.3-Flash-NVFP4-Wabi`。** 脚本传了
+`--served-model-name`,所以请求里要带的是这个字符串,而不是检查点
+路径;其他 id 一律返回 404。`/v1/models` 会把它连同服务窗口一起返回:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models
+```
+
+一条完整的请求,在 head 节点上发出:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "GLM-5.3-Flash-NVFP4-Wabi",
+       "messages": [{"role": "user", "content": "Hello."}],
+       "max_tokens": 128}'
+```
+
+一个 OpenAI 兼容的客户端只需要三项设置:base URL
+`http://127.0.0.1:8000/v1`(客户端在别的机器上时,把 localhost 换成
+head 的地址)、模型 `GLM-5.3-Flash-NVFP4-Wabi`,以及任意字符串作为 API
+key——服务端并不校验。我自己就是用这样配置的编码 agent 来使用这台
+服务的。
+
+**工具调用是开着的。** serve 那一行带了
+`--enable-auto-tool-choice --tool-call-parser glm45`,所以客户端可以发
+`tools`,并拿回结构化的 `tool_calls`。没有这两个 flag,任何带 `tools`
+的请求都会被 HTTP 400 拒绝:
+
+```
+"auto" tool choice requires --enable-auto-tool-choice and
+--tool-call-parser to be set
+```
+
+**除了 `content`,也要读 `reasoning`,并且不要试图关掉 thinking。**
+`--reasoning-parser glm45` 把模型的 thinking 移到消息上单独的
+`reasoning` 字段,`content` 里留下回答。那个看起来像开关的旋钮并不是
+开关:
+
+| 客户端发送的内容 | `reasoning` | `content` |
+|---|---|---|
+| 什么都不发——默认 | thinking | 回答 |
+| `chat_template_kwargs: {"enable_thinking": false}` | 空 | thinking 和回答连成一片 |
+| 带 `continue_final_message` 的空 assistant 轮次 | 整个回复 | 空 |
+
+`enable_thinking: false` 停下的是解析器,不是模型:模型继续 thinking,
+而这些思考落进读者会看到的 `content`。空 assistant 续写——标尺上用来
+跳过 thinking 的那种写法,`bench/measure.py` 用的就是它——是同一机制的
+另一面:模板自己关掉了 thinking 块,模型一次也不吐出闭合标签,解析器
+就把整个回复留在 `reasoning` 里。这两种情况都不是服务端设置能修的。
+两个都别发,两个字段都读,原样的 OpenAI 兼容客户端就能正常工作。
+
 ## 速度结果
 
 固定标尺:64 条日语散文提示,`temperature=0`,`max_tokens=512`,
 通过空的 assistant 续写跳过 thinking。除非注明,C=1 顺序流式跑完
 全部 64 条提示,并记录每条提示的 TTFT/TPOT。随附的 `serve/` 脚本
-固定 `--max-model-len 204800`、`--max-num-seqs 2`、
-`--gpu-memory-utilization 0.88`、FP8 KV 缓存。下面实测各行跑的不是
+固定 `--max-model-len 204800`、`--max-num-seqs 20`、
+`--gpu-memory-utilization 0.85`、`--enable-prefix-caching`、
+FP8 KV 缓存,以及在两台节点上都 export 的
+`RAY_memory_usage_threshold=0.99`。下面实测各行跑的不是
 这套,而是测量用的设置——绝大多数是 `--max-model-len 16384` 配
 `--max-num-seqs 20`,2026-09-13 的 stock 基线用
 `--max-model-len 131072` 配 32 个槽位,pair 2 的 stock RDMA 那一行
@@ -269,18 +370,18 @@ pair 上已经放着发布用的 route-h 检查点,顶替了下载,所以这项�
 
 **为什么出货的窗口是 204800,而表里不是。** 16384 是测量用的值——
 我最早把 MTP 拉起来的那个长度——它就这样一路留在上面每一次比较里。
-2026-09-17 重测的结果是:发布的配置在
-`--max-model-len 204800` `--max-num-seqs 2`
-`--gpu-memory-utilization 0.88` 下,对同一把 64 条提示的标尺读出
-35.15 tok/s,对比 16384 / 20 / 0.86 的 35.09——窗口拉长 12.5 倍,
-在约 2% 的轮间离散里看不出差别。长窗口的代价是并发而不是速度——
-随附脚本只要 2 个槽位而不是 20 个,是因为在 307200 下引擎用 20 个
-槽位起不来,而我没有在 204800 下重测这个上限;0.89 的利用率在这对
-节点上有过被拒绝启动的记录。窗口装得下,原因之一正是
-重新量化:同样在 0.88 下,官方检查点的上限是 156672 token(vLLM 在
+2026-09-17 重测的结果是:出货的配置在同一把 64 条提示的标尺上读出
+34.78 tok/s,TPOT 中位数 28.1 ms、TTFT 中位数 0.313 s、64 条请求里
+失败 0 条。对比 16384 / 20 / 0.86 的 35.09 是 0.9% 的差,而窗口拉长
+了 12.5 倍,落在同一配置轮间离散约 2% 之内。更长的窗口也没有削掉
+并发:20 个槽位在 204800 下是起得来的(到 READY 用了 909 秒,随后
+同一把标尺失败 0 条),在 307200 下才起不来。我往下调的只有利用率
+这一个参数——0.89 在这对节点上有过被拒绝启动的记录,而 0.88 时
+head 节点的宿主内存只剩约 2.1%,无论先被什么收走都离耗尽太近,
+所以脚本出货 0.85,留下 8.6%。窗口装得下,原因之一正是
+重新量化:在 0.88 下,官方检查点的上限是 156672 token(vLLM 在
 拒绝启动时会把这个上限打印出来),而 route h 在 204800 下能起来。
-我没有在接近这个长度的提示上测过任何东西——见上面"这道门限没有测
-什么"。
+窗口真正被用满时是什么表现,见下面"长上下文,实测"。
 
 我的计数方式:
 
@@ -382,7 +483,7 @@ K=3 的 0.483。我发布 K=2,是因为它是我测过的值中最好的,而不�
 多数提示是撞上 512 token 的上限,而不是自己停下来。在 stock
 检查点上,C=32 的聚合值为 sockets 下 95.08 tok/s(pair 2,64 条
 提示)和 RDMA 下 109.03 tok/s(pair 2,64 条提示);这两轮都是用
-32 个槽位跑的,出货的 `--max-num-seqs 2` 复现不了,所以请把它们当作
+32 个槽位跑的,出货的 `--max-num-seqs 20` 复现不了,所以请把它们当作
 测量用的数字,而不是发布脚本会给出的数字。route h 目前
 还没有 C=32 的行。
 
@@ -412,6 +513,64 @@ MTP K=2、`temperature=0`、expert parallel 开启,每一组都各自以 C=1
 不是 draft。两个读数都留在记录里。它们之间的离散,是这台机器上被
 别的事情碰到时,一轮 32 条提示能够产生的幅度,比 64 条提示的标尺在
 复跑之间显示的约 2% 要宽。
+
+## 长上下文,实测
+
+探针是 `bench/longctx.py`:把日语填充文本堆到目标长度,在开头、
+中段、末尾三种 token 深度各埋入十条事实,每条各问一个问题
+(`temperature=0`)。判分不靠裁判模型,而是代码的精确匹配。集合是
+`bench/longctx-probe.jsonl`,每篇文档都是它那十个问题的共享前缀,
+所以长 prefill 每档只付一次。下面是在出货配置——
+`--max-model-len 204800`、`--max-num-seqs 20`、
+`--gpu-memory-utilization 0.85`、`--enable-prefix-caching`、
+route h 加 MTP K=2、走 RDMA——上跑的一趟:
+
+| 提示 token | 找到的针 | 首 token,冷启 | 首 token,缓存已热 | prefill |
+|---:|---|---:|---:|---:|
+| 16,345 | 10/10 | 10.02 s | 4.27 s | 1630.6 tok/s |
+| 65,545 | 10/10 | 39.95 s | 2.91 s | 1640.8 tok/s |
+| 130,990 | 10/10 | 79.86 s | 3.15 s | 1640.2 tok/s |
+| 194,544 | 10/10 | 120.04 s | 4.74 s | 1620.6 tok/s |
+
+40 题里 40 题,且没有哪个深度更弱:开头 12/12、中段 16/16、末尾
+12/12。还有一次读数来自另一套配置,我特意把它留在表外:在
+`--max-model-len 307200`、利用率 0.88 下——这不是脚本出货的那套——
+一篇 204,767 token 的文档答对 10/10。它需要一个发布脚本不会打开的
+窗口,所以不作为上面的一行。
+
+这是检索,不是质量。它说明模型在 194,544 token 处仍能找到埋进去的
+事实,但对它在那个长度上的行文与推理是否撑得住,什么也没说。
+
+长窗口会带来几条限制。
+
+- **和窗口一样大的提示装不进去。** 探针最高一档瞄的是 190k 而不是
+  200k,这有实测上的理由:一篇 204,754 token 的文档加上
+  `max_tokens=64` 就是 204,818,超过 204,800 的上限,服务端返回
+  `HTTP 400`。引擎还活着——下一条请求照常回答——只是没法拿那篇
+  文档提问。可用的上限是窗口减去生成预算,再减去 chat 模板那部分。
+- **长提示的第一个 token 很慢。** prefill 在四档上都落在 1620 到
+  1641 tok/s 之间,所以那篇 194,544 token 的提示要 120.04 秒才出第
+  一个 token。不是卡住了,是在 prefill。`--enable-prefix-caching`
+  进出货参数正是为此:把一篇长文档钉成前缀、只换问题,第一条之后的
+  每一条都会差一个数量级——在 130,990 token 上,冷启 79.86 秒对缓存
+  后 3.15 秒。
+- **超过约 259,000 token,在这套硬件上什么都过不去。** 把
+  `--max-model-len` 调长不行,把 `--gpu-memory-utilization` 调低不
+  行,把 `--max-num-batched-tokens` 缩小也不行:宿主内存耗尽,节点上
+  的 OOM 收割器把 vLLM worker 带走。vLLM 启动时打印的
+  `peak activation` 是在 8192 token 的空跑上量出来的,而长 prefill
+  里稀疏 attention 的 indexer 所要的临时空间根本不在
+  `--gpu-memory-utilization` 的预算之内。把利用率从 0.88 降到 0.85,
+  只是把死亡从 prefill 的第 62 秒推到第 155 秒,提示并没有因此装下。
+
+`RAY_memory_usage_threshold=0.99` 由 `serve/start-head.sh` 和
+`serve/start-worker.sh` 在两台节点上都 export,这不是可选项。统一
+内存意味着 `--gpu-memory-utilization` 是从宿主 RAM 里划走的,于是
+Ray 自己的 OOM 监视器看到节点越过默认的 0.95,就去杀它能找到的最大
+actor,也就是 vLLM 的 TP0 worker。你看到的只有 `EngineDeadError`
+——启动时会出现,请求进行到一半也会出现——vLLM 日志里一切正常,
+kill 那一行在 raylet 的日志里。这两个脚本各自拉起一个 raylet,
+监视器也是每个 raylet 一份,所以这个变量两边都要 export。
 
 ## 哪些没有成功,以及时间
 
@@ -493,8 +652,9 @@ Terminal-Bench 2.1 0.8258 -> 0.8315。这使它成为可信赖的基座。
 
 - 英语和其他语言。这里每一项探针都是日语。
 - 代码正确性。代码提示出现在速度表里,在质量表里一处也没有。
-- 多轮对话、工具调用、指令遵循、长上下文——出货的窗口是 204800
-  token,但我没有在接近这个长度的提示上测过任何东西——安全行为,
+- 多轮对话、工具调用、指令遵循、长上下文下的质量——针探针到
+  194,544 token 仍是 40 题里 40 题,但那是检索,质量表里没有任何
+  一项跑在长于 2k 左右的提示上——安全行为,
   以及开启 thinking 的模型;而这正是这个家族通常的用法。
 - 更大语料上的 perplexity,并带上置信区间。目前的探针是八个句子,
   代码也不保留逐 token 的值,所以这个比值没有区间可附。
@@ -604,5 +764,9 @@ tests/                      run-tests.sh (offline smoke) +
 
 ## License
 
-Apache-2.0,见 LICENSE。模型权重不属于本仓库;请用
-`requant/requant.py` 自行对 NVIDIA 检查点做重新量化。
+本仓库中的代码是 Apache-2.0,见 LICENSE。权重是另一回事:它们不属于本
+仓库,而发布在 Hugging Face 上的派生检查点带的是它从
+`zai-org/GLM-5.3-Flash` 继承下来的上游 MIT 许可,而不是 Apache-2.0。那个
+Hugging Face 仓库逐字附上了 MIT 原文,并随附一份 NOTICE,写明上游模型、
+NVIDIA Model Optimizer 的基底量化,以及各位贡献者。如果你想自己构建权重,
+请用 `requant/requant.py` 对 NVIDIA 检查点做重新量化。

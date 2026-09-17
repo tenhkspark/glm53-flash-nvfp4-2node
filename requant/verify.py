@@ -53,7 +53,9 @@ DTYPE_BYTES = {
 }
 LAYER_RE = re.compile(r"^model\.language_model\.layers\.(\d+)\.(.+)$")
 
-MODEL = "GLM-5.3-Flash-NVFP4"
+# must match serve/start-head.sh --served-model-name: the requant is
+# served under its own name, not NVIDIA's
+MODEL = "GLM-5.3-Flash-NVFP4-Wabi"
 MAX_TOKENS = 512
 CONCURRENCY = 4
 PPL_RATIO_MAX = 1.10
@@ -462,9 +464,10 @@ def _tunnel(args):
 
     The url's 127.0.0.1 port is forwarded to the same remote port. If the
     local port is already bound, a free local port is forwarded instead
-    and args.url is repointed at it: a squatter (SearXNG held :8888 on
-    2026-09-15) makes ssh -L fail to bind but stay alive, after which the
-    readiness probe connects to the squatter and every request 404s.
+    and args.url is repointed at it: a squatter (an unrelated local
+    service already holding the port, seen 2026-09-15) makes ssh -L fail
+    to bind but stay alive, after which the readiness probe connects to
+    the squatter and every request 404s.
     ExitOnForwardFailure turns a raced bind into a dead ssh that the
     probe loop reports instead of silently misrouting.
 
@@ -973,7 +976,8 @@ def main():
     p.add_argument("dir")
     for c in ("capture", "check"):
         p = sub.add_parser(c)
-        p.add_argument("--url", default="http://127.0.0.1:8888")
+        # matches serve/serve.env.example PORT=8000
+        p.add_argument("--url", default="http://127.0.0.1:8000")
         p.add_argument("--ssh", help="ssh host for a -L tunnel")
         p.add_argument("--prompts", default=PROMPTS)
         p.add_argument("--eval-set", default=EVAL_SET)

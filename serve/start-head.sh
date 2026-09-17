@@ -21,8 +21,12 @@
 #   MTP_K           num_speculative_tokens (default 2, used iff MTP_DIR)
 #   CONTAINER       container name (default glm53-head)
 #
-# Serving window: this script ships --max-model-len 307200 with
-# --max-num-seqs 2 and --gpu-memory-utilization 0.88. Those three are one
+# Serving window: this script ships --max-model-len 204800 with
+# --max-num-seqs 20, --gpu-memory-utilization 0.85 and --enable-prefix-caching.
+# 0.85 rather than 0.88: at 0.88 the host had 2.11% free, which is the line the
+# node's OOM reaper fires at; 0.85 leaves 8.6%. RAY_memory_usage_threshold=0.99
+# is set on the head and the worker both (each node runs its own raylet, and the
+# default 0.95 kills the vLLM worker on a unified-memory node). Those are one
 # setting with three names, not three knobs: at 307200 the engine does
 # not come up with 20 sequence slots, and 0.89 was refused at boot on
 # this pair. Edit them together on the vllm serve line below.
@@ -115,20 +119,22 @@ docker run -d --name "$CONTAINER" --network host --gpus all \
   $MOUNTS $MTP_MNT $STEP_ENV $NCCL_IB_ENV $NCCL_IB_ARGS \
   --entrypoint bash \
   "$IMAGE" -lc "python3 -c 'import ray' 2>/dev/null || pip install -q ray; \
-    export VLLM_ENGINE_READY_TIMEOUT_S=3600 VLLM_HOST_IP=$HEAD_IP \
+    export VLLM_ENGINE_READY_TIMEOUT_S=3600 RAY_memory_usage_threshold=0.99 VLLM_HOST_IP=$HEAD_IP \
       NCCL_SOCKET_IFNAME=$IFNAME GLOO_SOCKET_IFNAME=$IFNAME && \
     ray start --head --node-ip-address=$HEAD_IP --port=6399 --num-gpus=1 \
       --dashboard-host=127.0.0.1 && \
     exec vllm serve /checkpoint \
-    --served-model-name GLM-5.3-Flash-NVFP4 \
+    --served-model-name GLM-5.3-Flash-NVFP4-Wabi \
     --host 0.0.0.0 --port $PORT \
-    --tensor-parallel-size 2 --data-parallel-size 1 \
+    --tensor-parallel-size 2 --data-parallel-size 1 --enable-expert-parallel \
     --distributed-executor-backend ray \
     --reasoning-parser glm45 --kernel-config '$KC' \
+    --enable-auto-tool-choice --tool-call-parser glm45 \
     --kv-cache-dtype fp8 \
     --model-loader-extra-config '{\"enable_multithread_load\": true, \"num_threads\": 32}' \
     --max-num-batched-tokens 8192 --enable-chunked-prefill \
-    --max-num-seqs 2 --max-model-len 307200 \
-    --gpu-memory-utilization 0.88 \
+    --max-num-seqs 20 --max-model-len 204800 \
+    --gpu-memory-utilization 0.85 \
+    --enable-prefix-caching \
     --limit-mm-per-prompt '{\"image\":0,\"video\":0}' $SPEC_ARG"
 echo "started $CONTAINER on $HEAD_IP ($IFNAME); API will listen on :$PORT"
