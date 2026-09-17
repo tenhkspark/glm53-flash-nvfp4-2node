@@ -2,8 +2,10 @@
 # status: not complete. First sweep-A pass on pair 1, NCCL/IB (RDMA),
 # expert-parallel on, MTP draft at the named K, has landed for K=1 and K=3
 # (measured 2026-09-16 JST). The full same-checkpoint sweep in both K
-# orders is still queued; K=4/K=5 failed to boot for route h at these
-# memory settings (see results/failures.tsv, k4-k5-boot-oom).
+# orders is still queued. K=4 did boot for route h (READY 918 s) but the
+# arm was stopped by the operator before it measured, so no K=4 number
+# exists for route h; K=5 was never run on route h at all (see
+# results/failures.tsv, k4-k5-boot-oom).
 # serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; NCCL over IB image
 # sanitised measure.py LEVEL/ACCEPT excerpt (first pass, sweep A)
 LEVEL label=h-rdma-ksweep-a-k1 C=1 prompts=64 tok/s=34.28 tokens=32326 wall=942.95s fails=0 tpot_med_ms=28.6 ttft_med_s=0.304
