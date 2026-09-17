@@ -14,8 +14,14 @@ This repository is the recipe behind that number: Ray tensor
 parallelism across the two nodes (TP=2), the weight-only
 requantization I use to recover single-stream decode speed (route h),
 an RDMA-capable derived image, and the overlays that make the MTP
-draft load. Everything here is my own implementation and my own
-measurements on my own hardware — *enjoying the incomplete*.
+draft load. That work is my own implementation and my own
+measurements on my own hardware. One shipped file is not mine to
+claim: `overlays/flashinfer_mla_sparse_sm120.py` is the serving
+image's own vLLM source file, licensed Apache-2.0 and carrying its
+upstream copyright header, modified here to support no-rope MLA; the
+other overlays are patchers I wrote that rewrite that same image's own
+sources at build time. [NOTICE](NOTICE) draws the line file by file —
+*enjoying the incomplete*.
 
 Every number below carries its conditions (pair, transport, prompt
 count, K, expert parallel, `max_tokens`), and every row in the speed
