@@ -35,7 +35,10 @@ Usage:
     apply-step-attr-patch.py [IMAGE_DIR] [OUT_DIR]
 
     IMAGE_DIR default: <this dir>/_image
-    OUT_DIR   default: <this dir>/_build
+    OUT_DIR   default: <this dir>/_build/step-attr
+              (a subdir of its own: the serve scripts mount _build/'s
+              top level unconditionally, and an instrumented model.py
+              there would silently replace the plain mla-quant overlay)
 
 Outputs keep the image basename (model.py, model_runner.py,
 cuda_communicator.py). Exit 0 on success; on any anchor/verify failure
@@ -52,7 +55,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_IMAGE_DIR = os.path.join(_HERE, "_image")
-DEFAULT_OUT_DIR = os.path.join(_HERE, "_build")
+DEFAULT_OUT_DIR = os.path.join(_HERE, "_build", "step-attr")
 
 IMAGE = "vllm/vllm-openai:glm53-flash-arm64-cu130"
 
@@ -204,7 +207,8 @@ HEADER = """\
 # hand-edit -- fix the patcher and regenerate instead.
 #
 # Enable by bind-mounting the patched files plus step_attr.py at
-# dist-packages root and setting STEP_ATTR=1.
+# dist-packages root and setting STEP_ATTR=1 -- serve/start-head.sh and
+# serve/start-worker.sh do both when started with STEP_ATTR=1.
 """
 
 WHAT = {

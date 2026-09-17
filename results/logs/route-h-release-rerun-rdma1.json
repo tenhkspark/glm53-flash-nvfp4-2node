@@ -1,5 +1,5 @@
 {
-  "label": "h-pubgrade-rdma1",
+  "label": "release-rerun-rdma1",
   "measured": "2026-09-16 JST",
   "pair": 1,
   "transport": "NCCL/IB (RDMA)",

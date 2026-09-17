@@ -1,0 +1,4 @@
+# stock NVIDIA NVFP4 checkpoint, no draft, pair 1, NCCL/IB (RDMA), expert-parallel on — measured 2026-09-17 JST (same-condition denominator)
+# serve flags: --max-num-seqs 20 --max-model-len 16384 --gpu-memory-utilization 0.86 --enable-expert-parallel --enable-ep-weight-filter; NCCL over RDMA (NCCL_IB=1)
+# sanitised measure.py LEVEL excerpt
+LEVEL label=stock-rdma-nodraft-p1c-k0 C=1 prompts=64 tok/s=14.39 tokens=32768 wall=2277.72s fails=0 tpot_med_ms=69.0 ttft_med_s=0.293

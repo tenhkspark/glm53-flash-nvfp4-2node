@@ -1,0 +1,9 @@
+# stock + MTP at K=4 and K=5, pair 2, sockets, expert-parallel on — measured 2026-09-16 JST
+# source for the stock side of the mtp-k-ge-3 entry in results/failures.tsv
+# arm flags as recorded at boot: --enable-expert-parallel --enable-ep-weight-filter,
+# MTP draft at the named K; no RDMA image and no requant overlay on these arms
+# sanitised measure.py LEVEL/ACCEPT excerpt (C=1, 64 prompts, max_tokens=512)
+LEVEL label=stock-mtpK4 C=1 prompts=64 tok/s=15.2 tokens=32738 wall=2153.57s fails=0 tpot_med_ms=65.1 ttft_med_s=0.766
+ACCEPT label=stock-mtpK4 d_accepted=19919.0 d_draft_tokens=51356.0 d_drafts=12839.0 acceptance=0.3879 mean_accepted_len=2.5514
+LEVEL label=stock-mtpK5 C=1 prompts=64 tok/s=13.1 tokens=32724 wall=2498.21s fails=0 tpot_med_ms=76.2 ttft_med_s=0.804
+ACCEPT label=stock-mtpK5 d_accepted=20012.0 d_draft_tokens=63595.0 d_drafts=12719.0 acceptance=0.3147 mean_accepted_len=2.5734

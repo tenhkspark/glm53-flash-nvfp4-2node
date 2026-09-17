@@ -1,0 +1,23 @@
+{
+ "label": "release-nodraft-h-rdma",
+ "max_tokens": 512,
+ "levels": [
+  {
+   "c": 1,
+   "prompts": 64,
+   "total_completion_tokens": 32316,
+   "wall_s": 1190.13,
+   "agg_tok_s": 27.15,
+   "ttft_median_s": 0.269,
+   "tpot_median_ms": 35.7,
+   "tpot_mean_ms": 36.3,
+   "fails": 0,
+   "finish_reasons": {
+    "length": 61,
+    "stop": 3
+   },
+   "tpot_weighted_mean_ms": 36.4
+  }
+ ],
+ "note": "C=1 ruler, 64 prose prompts, temperature 0, max 512 tokens; route h, NCCL over RDMA, no speculative draft; host names and local paths removed"
+}
