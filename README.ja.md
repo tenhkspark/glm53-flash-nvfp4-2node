@@ -66,7 +66,7 @@ ConnectX-7クラスのポート同士を200GbE QSFPの銅ケーブル一本で
 リンクがデコードループの内側にあるため、ここではtransportは細部
 ではありません——下に挙げる三つのレバーの一つです。
 
-## Stage 1 — リリース構成
+## リリース構成
 
 - **route `h` 再量子化** — attention linear(KDA fused `in_proj`/`out`
   射影、MLA q/kv/o、indexer `wq_b`)、shared-expertの

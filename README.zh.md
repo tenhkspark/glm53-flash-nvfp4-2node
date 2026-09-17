@@ -55,7 +55,7 @@ Hugging Face 和 GitHub 上看到你的版本。
 由于这条链路位于解码循环之内,transport 在这里不是细节——它是
 下面三个杠杆之一。
 
-## Stage 1 — 发布配置
+## 发布配置
 
 - **route `h` 重新量化** — attention linear(KDA fused
   `in_proj`/`out` 投影、MLA q/kv/o、indexer `wq_b`)、shared-expert

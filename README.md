@@ -65,7 +65,7 @@ the tables), `NCCL_IB=0` falls back to TCP ("sockets").
 Because the link sits inside the decode loop, transport is not a
 detail here — it is one of the three levers below.
 
-## Stage 1 — the released configuration
+## The released configuration
 
 - **Route `h` requantization** — attention linears (KDA fused
   `in_proj`/`out` projections, MLA q/kv/o, indexer `wq_b`),
