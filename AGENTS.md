@@ -33,10 +33,13 @@ The configured ceiling is 204,800 tokens. The longest input I have
 confirmed on the existing expert-parallel-off serving configuration is
 197,485 tokens. Stability across the full window, and under concurrent
 long-context load, is not something I have accepted yet. Additional
-memory is claimed *after* READY. The both-node check at startup is
-mandatory, but passing it is not a no-crash guarantee. The operating
-mode I recommend is a single stream. A next version combining a finite
-boot retry with a single-stream setting is still under acceptance.
+memory is claimed *after* READY. The startup headroom check is an
+optional diagnostic, not a required gate: passing it is not a no-crash
+guarantee, and I do not refuse a boot on that number alone. A rare
+engine stop can happen. The way I handle one is to recover the engine
+with the normal startup procedure and resume the unfinished work from a
+saved client session and the result files, rather than trying to make
+the boot unlosable.
 
 I do not claim the crash is fixed, that a retry makes boots 99.2% safe,
 that 20 concurrent requests are supported, or that a 1M window works.
@@ -270,14 +273,16 @@ sockets):
 docker logs glm53-head 2>&1 | grep -E 'NET/IB|via NET/IB'
 ```
 
-Then gate the host headroom on **both** nodes, before you send the first
-request:
+Optionally, check the host headroom on **both** nodes before you send
+the first request:
 
 ```bash
 serve/check-headroom.sh
 ```
 
-This is not optional on this hardware, and it has to run before traffic.
+This is a diagnostic, not a required gate. It is worth running after
+READY and before traffic, and it is worth reading when a node behaves
+badly, but a node under the floor is not refused on that basis alone.
 GB10 is unified memory: the engine sizes its budget from whatever was
 free when it profiled, so the margin is set by the boot, not by the
 flags. The same script on the same node has reached READY with anywhere
@@ -285,7 +290,7 @@ from 5470 MiB to 10270 MiB free. About 4.7 GiB of that is then spent
 *after* READY -- a one-time high-water mark paid the first time each
 larger prefill shape is seen, not a leak -- so a boot that looks healthy
 can still be killed mid-session by one long prompt. A node under the
-floor should be restarted, not tuned: at 204800 the limiting rank only
+floor is a candidate for a restart rather than for tuning: at 204800 the limiting rank only
 gets about 3.5 GiB of KV, and 0.01 of `--gpu-memory-utilization` is
 1.2 GiB, so two steps down and the engine can no longer open the window
 it advertises. The script prints the measured numbers behind the floor.
@@ -295,7 +300,7 @@ expert-parallel-off ladder, and it is not a safety guarantee. It was
 calibrated from five boots, and the post-READY high-water figure behind
 it comes from about two. A node that passes has not been shown to be
 safe; it has only been shown not to be obviously short. A node that
-fails should be restarted rather than tuned, and the check is only
+fails is worth restarting rather than tuning, and the check is only
 meaningful after READY and before traffic — run against a warmed engine
 it fails for reasons that say nothing about the boot.
 

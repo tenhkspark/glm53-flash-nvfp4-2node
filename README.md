@@ -439,10 +439,21 @@ EP-off shipped configuration is 197,485 tokens, and I have not yet
 accepted either the full span of that window or the stability of
 running long inputs concurrently within it. Extra memory is needed
 even after the engine reaches READY, not only during warm-up. Checking
-both nodes at boot is required, but passing that check is not a
-no-drop guarantee. The operation I recommend today is a single request
-at a time. A next version that pairs a finite number of boot retries
-with a single-execution setting is still in acceptance testing.
+headroom on both nodes at boot is a recommended diagnostic, not a
+required gate — it does not decide whether the server is allowed to
+start, and passing it is not a no-drop guarantee. The operation I
+recommend today is a single request at a time.
+
+Separately, a pi client talking to this server saves its own
+conversation history, sets contextWindow to 163,840, and by default
+starts auto-compaction around 147,456 tokens. That 147,456 figure is a
+client-side setting layered on top of 163,840, not a change to the
+model's own context capacity, and it is distinct from both the
+204,800-token server limit and the 197,485-token longest input I have
+confirmed above. A rare engine stop can still happen; if the engine
+stops, recover the engine, then resume unfinished work from the saved
+session and result files instead of blindly resubmitting everything —
+work that was in flight when the engine stopped can be lost.
 
 **How many requests actually run at once is not the flag value.** The
 serve line's `--max-num-seqs 20` is a ceiling the scheduler is allowed
@@ -459,10 +470,12 @@ not the number it runs together — the number this configuration
 actually decodes at once, at this prompt length, is **6** — and there
 is no reason to lower the flag.
 
-**Check the host headroom at boot, every boot.** `serve/check-headroom.sh`,
-run on both nodes before the first request. This is the one operational
-step that the speed table cannot warn you about, so it gets its own
-paragraph.
+**Checking host headroom at boot is a diagnostic I recommend, not a
+required gate.** Running `serve/check-headroom.sh` on both nodes before
+the first request does not decide whether the server is allowed to
+start; a node with thin headroom is more likely to hit a rare drop, so
+this is the one operational step the speed table cannot warn you about,
+and it gets its own paragraph anyway.
 
 GB10 is unified memory: the GPU allocates out of host RAM, and about
 100 GB of that reservation shows up in no standard kernel counter —
