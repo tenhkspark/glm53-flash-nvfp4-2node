@@ -16,7 +16,7 @@ source checkpoint is already available on local disk.
 | Interconnect | RoCE-capable link between the nodes (ConnectX-7 class), cabled port to port with no switch in the path — that direct-attached pair is what the numbers below were measured on. Optional — `NCCL_IB=0` falls back to sockets — but the headline number uses it |
 | Parallelism | Ray TP=2 (one GPU per node) |
 | Image | `vllm/vllm-openai:glm53-flash-arm64-cu130` + derived RDMA image |
-| Serve flags | `--max-model-len 204800`, `--max-num-seqs 20`, `--gpu-memory-utilization 0.85`, `--enable-prefix-caching`, FP8 KV cache, `RAY_memory_usage_threshold=0.99` on both nodes |
+| Serve flags | `--max-model-len 204800`, `--max-num-seqs 20`, `--gpu-memory-utilization 0.85`, `--max-num-batched-tokens 8192`, `--enable-chunked-prefill`, `--enable-prefix-caching`, FP8 KV cache, expert parallel off (no `--enable-expert-parallel` on the serve line), `RAY_memory_usage_threshold=0.99` on both nodes. Read "What this configuration is, and is not" below before relying on the window or on concurrency |
 | Host tools | docker on both nodes; a host `python3` — stdlib only, since `requant/verify.py` and `bench/measure.py` import nothing else; `ibdev2netdev`/`rdma` on both nodes for the RDMA path. torch and safetensors come from the image (see step 1), so nothing is pip-installed on the host |
 | Disk | the source checkpoint (~204 GB) where the requant runs; the route-h output (~190 GB) on **both** nodes; the MTP draft dir is ~16 GiB per node. `scripts/agent-run.sh` gates on >= 800 GB free under `WEIGHTS_ROOT` on the requant node (stock + output + draft + two images) and >= 400 GB on the other node (weights copy + image). The upstream BF16 release is ~599 GB and is *not* needed |
 
@@ -26,6 +26,44 @@ or the head node itself: when `HEAD_HOST` equals `$(hostname)`,
 locally instead of over ssh (relative `REMOTE_DIR` paths still resolve
 under `$HOME`, as an ssh session would). Only the worker then needs to
 be reachable by ssh — from the head, over the pair link.
+
+## What this configuration is, and is not
+
+The configured ceiling is 204,800 tokens. The longest input I have
+confirmed on the existing expert-parallel-off serving configuration is
+197,485 tokens. Stability across the full window, and under concurrent
+long-context load, is not something I have accepted yet. Additional
+memory is claimed *after* READY. The both-node check at startup is
+mandatory, but passing it is not a no-crash guarantee. The operating
+mode I recommend is a single stream. A next version combining a finite
+boot retry with a single-stream setting is still under acceptance.
+
+I do not claim the crash is fixed, that a retry makes boots 99.2% safe,
+that 20 concurrent requests are supported, or that a 1M window works.
+Four distinct failure families are on record, and no single change
+addresses all of them:
+
+1. **Boot headroom.** The margin is set when the engine profiles, and
+   the same script on the same node has reached READY with anywhere from
+   5470 MiB to 10270 MiB free. A boot that starts low is on a death
+   course before the first request. The startup check screens for this;
+   it does not change the boot.
+2. **Ray's own OOM monitor.** Ray's default `memory_usage_threshold` of
+   0.95 killed the TP0 worker at about 5770 MiB free — above the reaper
+   line the startup floor is calibrated against. Both serve scripts
+   export `RAY_memory_usage_threshold=0.99`; if that export is missing,
+   the floor is the wrong number and a passing boot can still be killed.
+3. **Demand above supply.** Prompts of roughly 259k tokens died on every
+   configuration tried, including a lower `--gpu-memory-utilization` and
+   a smaller prefill chunk; the only change was how long they took to
+   die. Those lengths are outside the 204,800 window this configuration
+   advertises, but they show the window is a ceiling, not a promise.
+4. **Failures that are not about memory.** `--max-num-batched-tokens
+   2048` hits an illegal memory access in the KDA kernel on the first
+   long prefill, with host memory still 5.33% free and no reaper
+   involved. Separately, the NCCL low-latency and symmetric-memory
+   all-reduce variants in `results/failures.tsv` booted but returned
+   empty bodies. Neither is reached by any memory setting.
 
 Observed wall times on my setup (excluding download time):
 
@@ -252,6 +290,15 @@ gets about 3.5 GiB of KV, and 0.01 of `--gpu-memory-utilization` is
 1.2 GiB, so two steps down and the engine can no longer open the window
 it advertises. The script prints the measured numbers behind the floor.
 
+The floor itself is a provisional screening value, derived from the
+expert-parallel-off ladder, and it is not a safety guarantee. It was
+calibrated from five boots, and the post-READY high-water figure behind
+it comes from about two. A node that passes has not been shown to be
+safe; it has only been shown not to be obviously short. A node that
+fails should be restarted rather than tuned, and the check is only
+meaningful after READY and before traffic — run against a warmed engine
+it fails for reasons that say nothing about the boot.
+
 **`MTP_DIR` is what the headline number needs.** Set it (in both files)
 to the draft dir from step 2 to enable MTP (`MTP_K=2`). Left unset, the
 pair serves without speculation: about 28 tok/s on this route over RDMA
@@ -268,13 +315,18 @@ what a client has to send: the served model name, the tool-call flags
 this script ships, and the `reasoning` field the answer arrives in.
 That section also has the same caveat this runbook should carry: the
 serve line's `--max-num-seqs 20` is a scheduler ceiling, not a measured
-concurrent-request count -- the KV pool decides how many of those 20
-admitted slots actually run together, and on this pair at around 25,000
-tokens per prompt that number is **6** -- measured by sending 20
-requests at once, which queued 14 and ran 6 concurrently with zero
-failures and zero preemptions at 128% of KV pool capacity; the serve
-line ships `--max-num-seqs 20` unchanged, since it caps what the
-scheduler accepts, not what it decodes together.
+concurrent-request count, and not a supported concurrency level -- the
+KV pool decides how many of those 20 admitted slots actually run
+together, and on this pair at around 25,000 tokens per prompt that
+number is **6** -- measured by sending 20 requests at once, which queued
+14 and ran 6 concurrently with zero failures and zero preemptions at
+128% of KV pool capacity. That measurement was taken at about 25,000
+tokens per prompt; it says nothing about 20 streams near the top of the
+window, which I have not measured. The 204,800 window and the 20-slot
+ceiling do not multiply into a supported workload. The serve line ships
+`--max-num-seqs 20` unchanged, since it caps what the scheduler accepts,
+not what it decodes together, but the operating mode I recommend is a
+single stream.
 
 ## 6. Gate, then measure
 
@@ -391,6 +443,19 @@ The reference row follows the configuration: `h-rdma-mtp` (35.09 tok/s,
 40.7) with a draft dir over sockets, `h-nospec` (18.98, 51.5) without
 one. Gated metrics are the C=1 aggregate tok/s and the C=1 median TPOT;
 TTFT and MTP acceptance are printed for context only.
+
+Each of those numbers belongs to a configuration, and the rows in
+`results/results.tsv` carry the log each came from. The 35.09 reference
+was measured on an earlier internal launcher with expert parallel on.
+The serve scripts in this repository ship expert parallel off, and on
+that path I measured 37.33 tok/s (`ship-script (ep off)`, source log
+`logs/route-h-shipscript-ep0-p2-rdma.log`) against an expert-parallel-on
+control of 35.05 (`ship-script + ep (control)`,
+`logs/route-h-shipscript-ep1-p2-rdma.log`) on the same script and the
+same pair. So a reproduction that lands near 37 rather than 35 is the
+expected result of the shipped flags, and it sits inside the 7% band
+rather than indicating a problem. I do not carry any of these figures
+over to a configuration they were not measured on.
 
 The band is `VERIFY_TOL`, default 0.07. That number is measured, not
 chosen for comfort: two identical node pairs running the same ruler came

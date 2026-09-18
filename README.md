@@ -433,6 +433,17 @@ once it is measured; it is not measured yet, so this repo does not
 publish a number it has not tested — build in margin instead of
 trusting one.
 
+**Read this before you lean on the window.** The configured limit is
+204,800 tokens. The longest input I have confirmed on the existing
+EP-off shipped configuration is 197,485 tokens, and I have not yet
+accepted either the full span of that window or the stability of
+running long inputs concurrently within it. Extra memory is needed
+even after the engine reaches READY, not only during warm-up. Checking
+both nodes at boot is required, but passing that check is not a
+no-drop guarantee. The operation I recommend today is a single request
+at a time. A next version that pairs a finite number of boot retries
+with a single-execution setting is still in acceptance testing.
+
 **How many requests actually run at once is not the flag value.** The
 serve line's `--max-num-seqs 20` is a ceiling the scheduler is allowed
 to admit, not a guarantee that 20 requests run together; when the KV
@@ -442,7 +453,7 @@ Sending 20 requests at once, each about 25,000 tokens, against this
 pair's 382,740-token KV pool (204,800-token window, expert parallel on)
 queued cleanly at 128% of pool capacity: the scheduler ran a peak of 6
 requests concurrently, held the other 14 in the waiting queue, and
-finished all 20 with zero failures and zero preemptions. So
+finished all 20 with zero failures and zero preemptions. This run's engine log, result JSON, and head/worker low-water TSVs are recorded at `results/logs/route-h-seqs-c20-p1-engine.log`, `results/logs/route-h-seqs-c20-p1-result.json`, `results/logs/route-h-seqs-c20-p1-lowwater-head.tsv`, and `results/logs/route-h-seqs-c20-p1-lowwater-worker.tsv`. So
 `--max-num-seqs 20` is the number of requests the server will accept,
 not the number it runs together — the number this configuration
 actually decodes at once, at this prompt length, is **6** — and there
@@ -542,7 +553,7 @@ acceptance fact, not a measurement of how many of those 20 admitted
 slots can actually run at once — the KV pool decides that, and at this
 window and around 25,000 tokens per prompt the number is **6**: sending
 20 requests at once queued 14 of them and ran 6 concurrently, with zero
-failures and zero preemptions even at 128% of KV pool capacity.
+failures and zero preemptions even at 128% of KV pool capacity. This run's engine log, result JSON, and head/worker low-water TSVs are recorded at `results/logs/route-h-seqs-c20-p1-engine.log`, `results/logs/route-h-seqs-c20-p1-result.json`, `results/logs/route-h-seqs-c20-p1-lowwater-head.tsv`, and `results/logs/route-h-seqs-c20-p1-lowwater-worker.tsv`.
 `--max-num-seqs 20` still ships unchanged — it sets what the scheduler
 will accept, not what it decodes together, and lowering it would not
 change the 6. Utilization is the
