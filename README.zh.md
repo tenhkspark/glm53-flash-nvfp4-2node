@@ -355,6 +355,36 @@ key——服务端并不校验。我自己就是用这样配置的编码 agent �
 就把整个回复留在 `reasoning` 里。这两种情况都不是服务端设置能修的。
 两个都别发,两个字段都读,原样的 OpenAI 兼容客户端就能正常工作。
 
+**每次启动都要检查主机的空闲内存。** 在两个节点上、发出第一个请求之前跑
+`serve/check-headroom.sh`。这是速度表永远提醒不了你的一步运维动作,所以
+单独给它一段。
+
+GB10 是统一内存:GPU 从主机 RAM 里分配,而这份预留里大约 100 GB 不出现在
+任何标准内核计数器里——在这颗芯片上 `nvidia-smi` 的 FB Memory Usage 返回
+N/A——所以 `MemAvailable` 是你手上唯一诚实的量具。vLLM 按它做 profile 那一刻
+恰好空着的量来定预算,也就是说**决定余量的是这次启动,不是那些参数**。
+同一个未改动的脚本在同一个节点上,三次启动分别以 5470、9728、10270 MiB 的
+空闲到达 READY:在我看得见的范围内毫无差别的启动之间,差出 4.8 GiB。
+
+然后在 READY **之后**还要再花掉约 4.7 GiB。把提示从 21k → 32k → 64k →
+128k → 197,485 token 一级级往上爬,同时每秒采一次两个节点的
+`MemAvailable`,最好的那次启动从 10270 MiB(8.24%)掉到 5579 MiB(4.48%)
+就停住了。这是一次性的高水位,不是泄漏——同样的长度再跑一遍不会多花——但它
+**在每个更大的 prefill 形状第一次到来时结账**,而这正是编程 agent 随着上下文
+变长会做的事。那次启动跑完了整个梯子,包括声明的完整窗口,零失败。
+
+5470 MiB 的那次没有。它跑了六个小时,在一条 20,915 token 的 agent 提示中途
+被杀掉,驱动先记下了 `NV_ERR_NO_MEMORY`。它从一开始就没有为自己的热身
+留出余地。
+
+所以下限是"热身所需 + 收割你的那条线",而检查放在启动时:低于下限的节点应该
+重启,而不是调参。下调 `--gpu-memory-utilization` 并不像看上去那么管用——在
+204800 下,受限的那个 rank 只拿到约 3.5 GiB 的 KV,而 utilization 的 0.01 就是
+1.2 GiB,往下两档,引擎就再也打不开它对外声明的窗口了。还有一条专门给复现者的
+警告:**DGX OS 既不带 `earlyoom` 也不带 `systemd-oomd`。** 在我们的节点上,
+是我们自己装的 OOM 守护进程把这件事变成了一次干净的进程终止。没有它,同样的
+压力在这套硬件上就是一台挂死的机器。
+
 ## 速度结果
 
 固定标尺:64 条日语散文提示,`temperature=0`,`max_tokens=512`,
@@ -375,11 +405,26 @@ FP8 KV 缓存,以及在两台节点上都 export 的
 
 **为什么出货的窗口是 204800,而表里不是。** 16384 是测量用的值——
 我最早把 MTP 拉起来的那个长度——它就这样一路留在上面每一次比较里。
-2026-09-17 重测的结果是:出货的配置在同一把 64 条提示的标尺上读出
-34.78 tok/s,TPOT 中位数 28.1 ms、TTFT 中位数 0.313 s、64 条请求里
-失败 0 条。对比 16384 / 20 / 0.86 的 35.09 是 0.9% 的差,而窗口拉长
-了 12.5 倍,落在同一配置轮间离散约 2% 之内。更长的窗口也没有削掉
-并发:20 个槽位在 204800 下是起得来的(到 READY 用了 909 秒,随后
+2026-09-17 在出货的窗口上重测——和这张表里其他每一行一样开着
+expert parallel——标尺读出 34.78 tok/s,TPOT 中位数 28.1 ms、TTFT
+中位数 0.313 s、64 条请求里失败 0 条。对比 16384 / 20 / 0.86 的
+35.09 是 0.9% 的差,而窗口拉长了 12.5 倍,落在同一配置轮间离散约
+2% 之内。
+
+**出货的脚本比那一行更快,因为它不开 expert parallel。**
+`serve/start-head.sh` 里没有任何地方传
+`--enable-expert-parallel`,而这张表里每一行都是开着它测的。完全
+照出货的样子跑这个已发布的脚本,同一把 64 条提示的标尺在刚启动的
+一对节点上读出 **37.33 tok/s**——TPOT 中位数 26.4 ms、TTFT 中位数
+0.302 s、64 条里失败 0 条、接受率 0.6168——复跑一次是 36.95。把那两个
+EP 参数加回同一个脚本,就掉到 35.05(TPOT 27.9 ms,接受率 0.6223),
+这把 34.78 那一行复现到了 0.8% 以内。所以差距就是 expert parallel,
+没有别的。EP 在这里还要多吃主机内存:它把 READY 之后的高水位从
+4691 MiB 抬到 6014 MiB,把梯子的低水位从 4.48% 压到 3.38%。在这对
+节点上它更慢也更饿,所以脚本不出货它——上面那张表也保留它自己测得的
+条件,而不是借用更快的那个数字。
+
+更长的窗口也没有削掉并发:20 个槽位在 204800 下是起得来的(到 READY 用了 909 秒,随后
 同一把标尺失败 0 条),在 307200 下才起不来。我往下调的只有利用率
 这一个参数——0.89 在这对节点上有过被拒绝启动的记录,而 0.88 时
 head 节点的宿主内存只剩约 2.1%,无论先被什么收走都离耗尽太近,
@@ -735,7 +780,7 @@ overlays/                   image-source patchers (fail-closed anchors):
   build-overlays.sh         fetch + patch everything into _build/
 docker/Dockerfile.nccl-ib   derived image: questing rdma-core on noble
 serve/                      start-head.sh / start-worker.sh / nccl-ib.sh
-                            + serve.env.example
+                            + check-headroom.sh + serve.env.example
 scripts/agent-run.sh        one-shot driver for the whole runbook
 scripts/verify-result.py    checks a measured row against the expected one
 bench/                      measure.py + prompts-64.jsonl + eval-200.jsonl

@@ -232,6 +232,26 @@ sockets):
 docker logs glm53-head 2>&1 | grep -E 'NET/IB|via NET/IB'
 ```
 
+Then gate the host headroom on **both** nodes, before you send the first
+request:
+
+```bash
+serve/check-headroom.sh
+```
+
+This is not optional on this hardware, and it has to run before traffic.
+GB10 is unified memory: the engine sizes its budget from whatever was
+free when it profiled, so the margin is set by the boot, not by the
+flags. The same script on the same node has reached READY with anywhere
+from 5470 MiB to 10270 MiB free. About 4.7 GiB of that is then spent
+*after* READY -- a one-time high-water mark paid the first time each
+larger prefill shape is seen, not a leak -- so a boot that looks healthy
+can still be killed mid-session by one long prompt. A node under the
+floor should be restarted, not tuned: at 204800 the limiting rank only
+gets about 3.5 GiB of KV, and 0.01 of `--gpu-memory-utilization` is
+1.2 GiB, so two steps down and the engine can no longer open the window
+it advertises. The script prints the measured numbers behind the floor.
+
 **`MTP_DIR` is what the headline number needs.** Set it (in both files)
 to the draft dir from step 2 to enable MTP (`MTP_K=2`). Left unset, the
 pair serves without speculation: about 28 tok/s on this route over RDMA

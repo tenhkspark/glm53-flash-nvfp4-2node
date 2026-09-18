@@ -414,6 +414,44 @@ never emits the closing tag, and the parser leaves the entire reply in
 neither, read both fields, and a stock OpenAI-compatible client
 behaves.
 
+**Check the host headroom at boot, every boot.** `serve/check-headroom.sh`,
+run on both nodes before the first request. This is the one operational
+step that the speed table cannot warn you about, so it gets its own
+paragraph.
+
+GB10 is unified memory: the GPU allocates out of host RAM, and about
+100 GB of that reservation shows up in no standard kernel counter —
+`nvidia-smi` reports FB Memory Usage as N/A on this part — so
+`MemAvailable` is the only honest gauge you have. vLLM sizes its budget
+from whatever happened to be free when it profiled, which means the
+margin is decided by the boot rather than by the flags. The same
+unmodified script on the same node reached READY with 5470, 9728 and
+10270 MiB free on three different runs: a 4.8 GiB spread across boots
+that differ in nothing I can see.
+
+Then about 4.7 GiB more is spent *after* READY. Sampling `MemAvailable`
+once a second on both nodes while climbing 21k → 32k → 64k → 128k →
+197,485-token prompts, the best boot fell from 10270 MiB (8.24%) to
+5579 MiB (4.48%) and stayed there. It is a one-time high-water mark, not
+a leak — repeating a length costs nothing more — but it is charged the
+first time each larger prefill shape arrives, which is exactly what a
+coding agent does as its context grows. That boot served the whole
+ladder, including the full declared window, with zero failures.
+
+The 5470 MiB boot did not. It ran for six hours and was killed partway
+through a 20,915-token agent prompt, with the driver logging
+`NV_ERR_NO_MEMORY` first. It never had room for its own warm-up.
+
+So the floor is warm-up plus whatever reaps you, and the check is at
+boot: a node under it should be restarted, not tuned. Lowering
+`--gpu-memory-utilization` is not the lever it looks like — at 204800
+the limiting rank gets about 3.5 GiB of KV and 0.01 of utilization is
+1.2 GiB, so two steps down and the engine can no longer open the window
+it advertises. And one warning specific to reproducing this: **DGX OS
+ships neither `earlyoom` nor `systemd-oomd`.** On our nodes an OOM
+daemon we had installed ourselves turned this into a clean process kill.
+Without one, the same pressure on this hardware is a hung node.
+
 ## Speed results
 
 Fixed ruler: 64 Japanese prose prompts, `temperature=0`,
@@ -435,12 +473,29 @@ everywhere else. Each row's exact flags live in the file its
 
 **Why the shipped window is 204800 and the table is not.** 16384 was the
 rig value — the length I first got MTP up on — and it stayed pinned
-through every comparison above. Re-measured on 2026-09-17, the shipped
-configuration reads 34.78 tok/s on the same 64-prompt ruler — TPOT
-median 28.1 ms, TTFT median 0.313 s, 0 of the 64 requests failed —
-against 35.09 at 16384 / 20 / 0.86. That is a 0.9% difference across a
-12.5x longer window, inside the run-to-run spread of about 2% on
-identical configurations. The longer window does not cost concurrency
+through every comparison above. Re-measured on 2026-09-17 at the shipped
+window, with expert parallel on as everywhere else in this table, the
+ruler reads 34.78 tok/s — TPOT median 28.1 ms, TTFT median 0.313 s, 0 of
+the 64 requests failed — against 35.09 at 16384 / 20 / 0.86. That is a
+0.9% difference across a 12.5x longer window, inside the run-to-run
+spread of about 2% on identical configurations.
+
+**The shipped script is faster than that row, because it does not enable
+expert parallel.** Nothing in `serve/start-head.sh` passes
+`--enable-expert-parallel`, while every row in this table was measured
+with it on. Run from the published script exactly as it ships, the same
+64-prompt ruler reads **37.33 tok/s** — TPOT median 26.4 ms, TTFT median
+0.302 s, 0 of 64 failed, acceptance 0.6168 — on a freshly booted pair,
+and 36.95 on a repeat. Adding the two EP flags back to that same script
+drops it to 35.05 (TPOT 27.9 ms, acceptance 0.6223), which reproduces the
+34.78 row to within 0.8%. So the gap is expert parallel and nothing else.
+EP also costs host memory here: it raised the post-READY high-water mark
+from 4691 MiB to 6014 MiB and pushed the ladder's low water from 4.48% to
+3.38%. It is slower and hungrier on this pair, so the scripts do not ship
+it — and the table above keeps its own measured condition rather than
+borrowing the faster number.
+
+The longer window does not cost concurrency
 either: 20 sequence slots do come up at 204800 (909 s to READY, then the
 same 0-failure ruler), which they did not at 307200. Utilization is the
 one flag that moved down rather than up — 0.89 has been refused at boot
@@ -849,7 +904,7 @@ overlays/                   image-source patchers (fail-closed anchors):
   build-overlays.sh         fetch + patch everything into _build/
 docker/Dockerfile.nccl-ib   derived image: questing rdma-core on noble
 serve/                      start-head.sh / start-worker.sh / nccl-ib.sh
-                            + serve.env.example
+                            + check-headroom.sh + serve.env.example
 scripts/agent-run.sh        one-shot driver for the whole runbook
 scripts/verify-result.py    checks a measured row against the expected one
 bench/                      measure.py + prompts-64.jsonl + eval-200.jsonl
