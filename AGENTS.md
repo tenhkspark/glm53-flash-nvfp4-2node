@@ -266,6 +266,11 @@ from the example silently does without -- uncomment it on both nodes.
 Once `/v1/models` answers, "Using the served model" in the README says
 what a client has to send: the served model name, the tool-call flags
 this script ships, and the `reasoning` field the answer arrives in.
+That section also has the same caveat this runbook should carry: the
+serve line's `--max-num-seqs 20` is a scheduler ceiling, not a measured
+concurrent-request count -- the KV pool decides how many of those 20
+admitted slots actually run together, and that number is
+<!-- CONCURRENCY-TBD -->.
 
 ## 6. Gate, then measure
 
