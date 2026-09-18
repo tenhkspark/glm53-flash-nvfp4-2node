@@ -359,8 +359,12 @@ cannot be guessed from the outside, so they are written down here.
 
 **The model id is `GLM-5.3-Flash-NVFP4-Wabi`.** The script passes
 `--served-model-name`, so that string — not the checkpoint path — is
-what a request has to carry; any other id comes back 404. `/v1/models`
-returns it together with the serving window:
+what a request has to carry; any other id comes back 404. That check is
+not theoretical: on 2026-09-17 a client still pointed at the earlier
+name, `GLM-5.3-Flash-NVFP4`, got 404 on every request until it was
+re-pointed at `GLM-5.3-Flash-NVFP4-Wabi` — matching the served name is
+the whole fix, there is no separate id-to-checkpoint mapping to chase.
+`/v1/models` returns it together with the serving window:
 
 ```bash
 curl -s http://127.0.0.1:8000/v1/models
@@ -381,7 +385,10 @@ URL `http://127.0.0.1:8000/v1` (the head's address in place of
 localhost when the client runs elsewhere), model
 `GLM-5.3-Flash-NVFP4-Wabi`, and any string as the API key — the server
 does not check one. I drive this server from a coding agent set up
-exactly that way.
+exactly that way: pi, pointed at `base_url`
+`http://<head-node-ip>:<PORT>/v1` with `model`
+`GLM-5.3-Flash-NVFP4-Wabi`, gets structured `tool_calls` back and keeps
+thinking in its own field instead of leaking it into the reply.
 
 **Tool calls are on.** The serve line carries
 `--enable-auto-tool-choice --tool-call-parser glm45`, so a client may
@@ -413,6 +420,23 @@ never emits the closing tag, and the parser leaves the entire reply in
 `reasoning`. Neither case is fixable with a server-side setting. Send
 neither, read both fields, and a stock OpenAI-compatible client
 behaves.
+
+**Do not let the window fill.** "Long context, measured" below records
+four prompts that killed the engine outright regardless of
+`--gpu-memory-utilization` or `--max-num-batched-tokens`; that failure
+mode is not one you can prompt-engineer around once the window is
+nearly full. Compact or clear an agent's conversation well before it
+reaches <!-- SAFE-WINDOW-TBD --> tokens rather than letting it run
+until the server does it for you; the exact safe threshold is not yet
+measured.
+
+**How many requests actually run at once is not the flag value.** The
+serve line's `--max-num-seqs 20` is a ceiling the scheduler is allowed
+to admit, not a guarantee that 20 requests run together; when the KV
+cache pool cannot hold that many sequences, vLLM preempts down to what
+fits rather than failing the request. How many concurrent requests this
+configuration actually sustains at a given prompt length has not been
+measured: <!-- CONCURRENCY-TBD -->.
 
 **Check the host headroom at boot, every boot.** `serve/check-headroom.sh`,
 run on both nodes before the first request. This is the one operational
@@ -448,8 +472,8 @@ boot: a node under it should be restarted, not tuned. Lowering
 the limiting rank gets about 3.5 GiB of KV and 0.01 of utilization is
 1.2 GiB, so two steps down and the engine can no longer open the window
 it advertises. And one warning specific to reproducing this: **DGX OS
-ships neither `earlyoom` nor `systemd-oomd`.** On our nodes an OOM
-daemon we had installed ourselves turned this into a clean process kill.
+ships neither `earlyoom` nor `systemd-oomd`.** On my nodes an OOM
+daemon I had installed myself turned this into a clean process kill.
 Without one, the same pressure on this hardware is a hung node.
 
 ## Speed results
@@ -501,9 +525,12 @@ from 4691 MiB to 6014 MiB and pushed the ladder's low water from 4.48% to
 it — and the table above keeps its own measured condition rather than
 borrowing the faster number.
 
-The longer window does not cost concurrency
-either: 20 sequence slots do come up at 204800 (909 s to READY, then the
-same 0-failure ruler), which they did not at 307200. Utilization is the
+The longer window does not stop the server from booting with
+`--max-num-seqs 20`: it reaches READY at 204800 (909 s, then the same
+0-failure ruler), which it did not at 307200. That is a boot-time
+acceptance fact, not a measurement of how many of those 20 admitted
+slots can actually run at once — the KV pool decides that, and the
+number is <!-- CONCURRENCY-TBD -->. Utilization is the
 one flag that moved down rather than up — 0.89 has been refused at boot
 on this pair, and at 0.88 the head node ran with about 2.1% of host RAM
 free — close enough to exhaustion that it does not matter what reaps
