@@ -425,18 +425,28 @@ behaves.
 four prompts that killed the engine outright regardless of
 `--gpu-memory-utilization` or `--max-num-batched-tokens`; that failure
 mode is not one you can prompt-engineer around once the window is
-nearly full. Compact or clear an agent's conversation well before it
-reaches <!-- SAFE-WINDOW-TBD --> tokens rather than letting it run
-until the server does it for you; the exact safe threshold is not yet
-measured.
+nearly full. Treat compaction as a routine part of the client, not a reaction to a
+failure: fold or clear an agent's conversation on a schedule well short
+of the window, before the server is forced to do it for you.
+<!-- SAFE-WINDOW-TBD --> marks where the exact safe threshold belongs
+once it is measured; it is not measured yet, so this repo does not
+publish a number it has not tested — build in margin instead of
+trusting one.
 
 **How many requests actually run at once is not the flag value.** The
 serve line's `--max-num-seqs 20` is a ceiling the scheduler is allowed
 to admit, not a guarantee that 20 requests run together; when the KV
-cache pool cannot hold that many sequences, vLLM preempts down to what
-fits rather than failing the request. How many concurrent requests this
-configuration actually sustains at a given prompt length has not been
-measured: <!-- CONCURRENCY-TBD -->.
+cache pool cannot hold that many sequences, the scheduler queues the
+rest rather than failing the request or preempting a running one.
+Sending 20 requests at once, each about 25,000 tokens, against this
+pair's 382,740-token KV pool (204,800-token window, expert parallel on)
+queued cleanly at 128% of pool capacity: the scheduler ran a peak of 6
+requests concurrently, held the other 14 in the waiting queue, and
+finished all 20 with zero failures and zero preemptions. So
+`--max-num-seqs 20` is the number of requests the server will accept,
+not the number it runs together — the number this configuration
+actually decodes at once, at this prompt length, is **6** — and there
+is no reason to lower the flag.
 
 **Check the host headroom at boot, every boot.** `serve/check-headroom.sh`,
 run on both nodes before the first request. This is the one operational
@@ -529,8 +539,13 @@ The longer window does not stop the server from booting with
 `--max-num-seqs 20`: it reaches READY at 204800 (909 s, then the same
 0-failure ruler), which it did not at 307200. That is a boot-time
 acceptance fact, not a measurement of how many of those 20 admitted
-slots can actually run at once — the KV pool decides that, and the
-number is <!-- CONCURRENCY-TBD -->. Utilization is the
+slots can actually run at once — the KV pool decides that, and at this
+window and around 25,000 tokens per prompt the number is **6**: sending
+20 requests at once queued 14 of them and ran 6 concurrently, with zero
+failures and zero preemptions even at 128% of KV pool capacity.
+`--max-num-seqs 20` still ships unchanged — it sets what the scheduler
+will accept, not what it decodes together, and lowering it would not
+change the 6. Utilization is the
 one flag that moved down rather than up — 0.89 has been refused at boot
 on this pair, and at 0.88 the head node ran with about 2.1% of host RAM
 free — close enough to exhaustion that it does not matter what reaps

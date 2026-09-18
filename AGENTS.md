@@ -269,8 +269,12 @@ this script ships, and the `reasoning` field the answer arrives in.
 That section also has the same caveat this runbook should carry: the
 serve line's `--max-num-seqs 20` is a scheduler ceiling, not a measured
 concurrent-request count -- the KV pool decides how many of those 20
-admitted slots actually run together, and that number is
-<!-- CONCURRENCY-TBD -->.
+admitted slots actually run together, and on this pair at around 25,000
+tokens per prompt that number is **6** -- measured by sending 20
+requests at once, which queued 14 and ran 6 concurrently with zero
+failures and zero preemptions at 128% of KV pool capacity; the serve
+line ships `--max-num-seqs 20` unchanged, since it caps what the
+scheduler accepts, not what it decodes together.
 
 ## 6. Gate, then measure
 
