@@ -330,8 +330,11 @@ tokens per prompt; it says nothing about 20 streams near the top of the
 window, which I have not measured. The 204,800 window and the 20-slot
 ceiling do not multiply into a supported workload. The serve line ships
 `--max-num-seqs 20` unchanged, since it caps what the scheduler accepts,
-not what it decodes together, but the operating mode I recommend is a
-single stream.
+not what it decodes together. Sending 20 requests of about 25,000 tokens
+at once against this pair ran 6 of them concurrently, queued the rest,
+and finished all 20 with zero failures and zero preemptions
+(`results/logs/route-h-seqs-c20-p1-*`); I do not restrict concurrency
+beyond what that measurement shows.
 
 ## 6. Gate, then measure
 
