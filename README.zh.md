@@ -399,8 +399,9 @@ FP8 KV 缓存,以及在两台节点上都 export 的
 `--max-model-len 131072` 配 32 个槽位,pair 2 的 stock RDMA 那一行
 用 16384 配 32 个槽位;c1pair 与 route h 各行用
 `--gpu-memory-utilization 0.86`,expert parallel 在标为 `ep` =
-`off` 的两条 stock + MTP 行(17.84 和 19.05 tok/s)上关闭,其余
-各行开启。各行的确切 flag 见 `results/results.tsv` 中该行
+`off` 的两条 stock + MTP 行(17.84 和 19.05 tok/s)以及末尾的
+ship-script 行(37.33 tok/s)上关闭,包括 ship-script 自身的
+EP-on 对照行(35.05 tok/s)在内的其余各行均开启。各行的确切 flag 见 `results/results.tsv` 中该行
 `source_log` 条目所指向的 `results/logs/` 下的文件。
 
 **为什么出货的窗口是 204800,而表里不是。** 16384 是测量用的值——
@@ -409,7 +410,9 @@ FP8 KV 缓存,以及在两台节点上都 export 的
 expert parallel——标尺读出 34.78 tok/s,TPOT 中位数 28.1 ms、TTFT
 中位数 0.313 s、64 条请求里失败 0 条。对比 16384 / 20 / 0.86 的
 35.09 是 0.9% 的差,而窗口拉长了 12.5 倍,落在同一配置轮间离散约
-2% 之内。
+2% 之内。这个 34.78 的读数在 `results/results.tsv` 里没有自己的一行——
+是一次内部启动器测量,没有留下日志。下面两条 ship-script 行的
+`source_log` 指向 `results/logs/`,这个仓库能复现的是它们。
 
 **出货的脚本比那一行更快,因为它不开 expert parallel。**
 `serve/start-head.sh` 里没有任何地方传

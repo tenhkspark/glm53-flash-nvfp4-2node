@@ -466,8 +466,9 @@ FP8 KVキャッシュ、そして両ノードでの
 ベースラインは `--max-model-len 131072` でスロット32本、pair 2の
 stock RDMA行は16384でスロット32本。c1pairとroute hの行は
 `--gpu-memory-utilization 0.86`、expert parallelは `ep` = `off` と
-記したstock + MTPの二行(17.84と19.05 tok/s)でオフ、それ以外では
-オンでした。各行の正確なフラグは、`results/results.tsv` のその行の
+記したstock + MTPの二行(17.84と19.05 tok/s)、および末尾のship-script行
+(37.33 tok/s)でオフ、末尾のship-script自身のEP-on制御行(35.05 tok/s)を
+含む他のすべての行ではオンでした。各行の正確なフラグは、`results/results.tsv` のその行の
 `source_log` が指す `results/logs/` 以下のファイルにあります。
 
 **なぜ出荷する窓は204800で、表はそうでないのか。** 16384は測定用の
@@ -476,7 +477,11 @@ stock RDMA行は16384でスロット32本。c1pairとroute hの行は
 同じくexpert parallelを有効にした状態で――ルーラーは34.78 tok/s、
 TPOT中央値28.1 ms、TTFT中央値0.313 s、リクエスト64件のうち失敗0件
 でした。16384 / 20 / 0.86での35.09に対して0.9%の差で、窓は12.5倍に
-なっていますが、同一構成での実行ごとのばらつき約2%の中です。
+なっていますが、同一構成での実行ごとのばらつき約2%の中です。この
+34.78という数値は `results/results.tsv` に自分の行を持ちません――
+内部ランチャでの測定で、そのログは残っていません。下の二つの
+ship-script行は `source_log` が `results/logs/` を指しており、この
+リポジトリで再現できるのはそちらです。
 
 **出荷するスクリプトはこの行より速い。expert parallelを有効に
 しないからです。** `serve/start-head.sh` は

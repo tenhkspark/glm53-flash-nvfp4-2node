@@ -466,8 +466,10 @@ at `--max-model-len 16384` with `--max-num-seqs 20`, the 2026-09-13
 stock baseline at `--max-model-len 131072` with 32 slots and the pair-2
 stock RDMA row at 16384 with 32 slots; the c1pair and route-h rows ran
 `--gpu-memory-utilization 0.86`, and expert parallel was off on the two
-stock + MTP rows marked `ep` = `off` (17.84 and 19.05 tok/s) and on
-everywhere else. Each row's exact flags live in the file its
+stock + MTP rows marked `ep` = `off` (17.84 and 19.05 tok/s) and on the
+ship-script row at the bottom (37.33 tok/s), on for every other row
+including the ship-script's own EP-on control row (35.05 tok/s). Each
+row's exact flags live in the file its
 `source_log` entry in `results/results.tsv` points to under
 `results/logs/`.
 
@@ -478,7 +480,11 @@ window, with expert parallel on as everywhere else in this table, the
 ruler reads 34.78 tok/s — TPOT median 28.1 ms, TTFT median 0.313 s, 0 of
 the 64 requests failed — against 35.09 at 16384 / 20 / 0.86. That is a
 0.9% difference across a 12.5x longer window, inside the run-to-run
-spread of about 2% on identical configurations.
+spread of about 2% on identical configurations. That 34.78 reading has
+no row of its own in `results/results.tsv` — it was an internal-launcher
+measurement and no log from it survives; the two ship-script rows below,
+with `source_log` entries pointing into `results/logs/`, are the ones
+this repo can reproduce.
 
 **The shipped script is faster than that row, because it does not enable
 expert parallel.** Nothing in `serve/start-head.sh` passes

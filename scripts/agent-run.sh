@@ -498,6 +498,16 @@ step_serve() {
         || fail 9 "NCCL NET/IB gate failed (libmlx5 ABI? missing /dev/infiniband devices? see AGENTS.md)"
     fi
   fi
+  # Gate host headroom on both nodes now, before this step's step_ruler
+  # sends any traffic: MemAvailable is only honest at boot (see
+  # serve/check-headroom.sh and AGENTS.md). A FAIL here means the node
+  # came up too tight for its own warm-up and must be restarted, not
+  # tuned -- so this fails the whole step rather than letting ruler run
+  # against a node that will die mid-session.
+  rsh "$HEAD_HOST" "cd '$REMOTE_DIR' && bash serve/check-headroom.sh" \
+    || fail 9 "host headroom check FAILed on $HEAD_HOST (restart serve/start-head.sh, then serve/start-worker.sh)"
+  rsh "$WORK_HOST" "cd '$REMOTE_DIR' && bash serve/check-headroom.sh" \
+    || fail 9 "host headroom check FAILed on $WORK_HOST (restart serve/start-head.sh, then serve/start-worker.sh)"
   ok 9
 }
 

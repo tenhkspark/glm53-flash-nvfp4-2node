@@ -437,8 +437,10 @@ FP8 KV 캐시, 그리고 두 노드 모두에서
 2026-09-13 순정 기준선은 `--max-model-len 131072`에 슬롯 32개,
 pair 2 순정 RDMA 행은 16384에 슬롯 32개였습니다.
 c1pair 및 route-h 행은 `--gpu-memory-utilization 0.86`을 실행했으며,
-`ep` = `off`로 표시된 두 개의 순정 + MTP 행(17.84 및 19.05 tok/s)에서는 expert parallel을 끈 상태였고
-그 외 모든 곳에서는 켠 상태였습니다. 각 행의 정확한 플래그는
+`ep` = `off`로 표시된 두 개의 순정 + MTP 행(17.84 및 19.05 tok/s)과
+맨 아래의 ship-script 행(37.33 tok/s)에서는 expert parallel을 끈 상태였고,
+ship-script 자체의 EP-on 대조 행(35.05 tok/s)을 포함한 그 외 모든 행에서는
+켠 상태였습니다. 각 행의 정확한 플래그는
 `results/results.tsv`의 해당 `source_log` 항목이 가리키는
 `results/logs/` 아래의 파일에 있습니다.
 
@@ -449,7 +451,10 @@ c1pair 및 route-h 행은 `--gpu-memory-utilization 0.86`을 실행했으며,
 ruler가 34.78 tok/s, TPOT 중앙값 28.1 ms, TTFT 중앙값 0.313 s, 요청 64건
 중 실패 0건이었습니다. 16384 / 20 / 0.86의 35.09와 비교하면 0.9% 차이이고,
 윈도우는 12.5배 길어졌지만 동일 구성에서의 실행 간 편차 약 2% 안에
-들어갑니다.
+있습니다. 이 34.78 수치는 `results/results.tsv`에 자기 행이 없습니다 —
+내부 런처로 측정한 값이며 그 로그는 남아 있지 않습니다. 아래의 두
+ship-script 행은 `source_log`가 `results/logs/`를 가리키며, 이
+저장소에서 재현할 수 있는 것은 그쪽입니다.
 
 **출하하는 스크립트는 그 행보다 빠릅니다. expert parallel을 켜지 않기
 때문입니다.** `serve/start-head.sh` 는 어디에서도
