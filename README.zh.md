@@ -368,6 +368,11 @@ key——服务端并不校验。我自己就是用这样配置的编码 agent �
 位置,等实测出来再填;现在还没有测过,所以我不写一个自己没验证过的
 数字——用留足余量的做法代替对某个数字的信任。
 
+**保证范围。** 配置上限是 204,800 token。用现有 EP-off 出货配置确认过的长文输入是
+197,485 token;上限全域以及长文同时执行的稳定性,我还没有验收完。READY 之后仍然
+需要额外内存。启动时对两个节点的检查是必须的,但通过并不是零落下的保证。推荐的
+用法是单次执行。把有限的启动重试和单次执行配置组合起来的下一版,正在验收中。
+
 **实际能同时跑几条请求,不等于那个 flag 的数值。** serve 那一行的
 `--max-num-seqs 20` 是调度器允许接纳的上限,不是 20 条请求会一起跑的
 保证;当 KV 缓存池装不下那么多序列时,调度器不会让请求失败,也不会抢占
@@ -375,7 +380,7 @@ key——服务端并不校验。我自己就是用这样配置的编码 agent �
 约 25,000 token,同时发 20 条请求(窗口 204,800 token、EP on、KV 池
 382,740 token),即使总量达到池容量的 128%,也被等待队列干净地吸收:
 调度器同时跑的峰值是 6 条,另外 14 条在队列里等,20 条全部完成,失败
-0 条、抢占 0 次。也就是说 `--max-num-seqs 20` 是服务端愿意接纳的上限,
+0 条、抢占 0 次。这次 C=20 实测的引擎日志、结果 JSON、head/worker 两侧的低水位 TSV 记录在 `results/logs/route-h-seqs-c20-p1-engine.log`、`results/logs/route-h-seqs-c20-p1-result.json`、`results/logs/route-h-seqs-c20-p1-lowwater-head.tsv`、`results/logs/route-h-seqs-c20-p1-lowwater-worker.tsv`。也就是说 `--max-num-seqs 20` 是服务端愿意接纳的上限,
 不是同时跑的条数——在这个 prompt 长度下,这套配置实际同时解码的条数
 是**6条**,不需要往下调这个 flag。
 
@@ -456,7 +461,7 @@ EP 参数加回同一个脚本,就掉到 35.05(TPOT 27.9 ms,接受率 0.6223),
 事实,并不是被接受的 20 个槽位里实际能同时跑几个的实测——那由 KV
 池决定;在这个窗口、每条 prompt 约 25,000 token 的条件下,数字是
 **6**——同时发 20 条请求,14 条排队等待,6 条同时跑,即使达到 KV 池
-容量的 128% 也是失败 0 条、抢占 0 次。`--max-num-seqs 20` 原样出货
+容量的 128% 也是失败 0 条、抢占 0 次。这次 C=20 实测的引擎日志、结果 JSON、head/worker 两侧的低水位 TSV 记录在 `results/logs/route-h-seqs-c20-p1-engine.log`、`results/logs/route-h-seqs-c20-p1-result.json`、`results/logs/route-h-seqs-c20-p1-lowwater-head.tsv`、`results/logs/route-h-seqs-c20-p1-lowwater-worker.tsv`。`--max-num-seqs 20` 原样出货
 即可,这个值定的是调度器肯接纳多少,不是同时解码多少,往下调也不会
 改变这个 6。我往下调的只有利用率
 这一个参数——0.89 在这对节点上有过被拒绝启动的记录,而 0.88 时

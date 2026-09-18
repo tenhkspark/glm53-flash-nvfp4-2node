@@ -1,0 +1,131 @@
+{
+ "concurrency": 20,
+ "wall_s": 389.3,
+ "ok": 20,
+ "failed": 0,
+ "prompt_tokens_min": 22148,
+ "prompt_tokens_max": 27752,
+ "total_prompt_tokens": 490600,
+ "detail": {
+  "12": {
+   "ok": true,
+   "s": 112.1,
+   "prompt_tokens": 23550,
+   "completion_tokens": 300
+  },
+  "13": {
+   "ok": true,
+   "s": 116.9,
+   "prompt_tokens": 26352,
+   "completion_tokens": 210
+  },
+  "11": {
+   "ok": true,
+   "s": 132.3,
+   "prompt_tokens": 27752,
+   "completion_tokens": 300
+  },
+  "3": {
+   "ok": true,
+   "s": 140.1,
+   "prompt_tokens": 24950,
+   "completion_tokens": 300
+  },
+  "5": {
+   "ok": true,
+   "s": 161.6,
+   "prompt_tokens": 23549,
+   "completion_tokens": 300
+  },
+  "8": {
+   "ok": true,
+   "s": 172.2,
+   "prompt_tokens": 24950,
+   "completion_tokens": 300
+  },
+  "6": {
+   "ok": true,
+   "s": 223.1,
+   "prompt_tokens": 23550,
+   "completion_tokens": 300
+  },
+  "17": {
+   "ok": true,
+   "s": 240.3,
+   "prompt_tokens": 26351,
+   "completion_tokens": 300
+  },
+  "18": {
+   "ok": true,
+   "s": 254.5,
+   "prompt_tokens": 26351,
+   "completion_tokens": 300
+  },
+  "14": {
+   "ok": true,
+   "s": 262.6,
+   "prompt_tokens": 22148,
+   "completion_tokens": 300
+  },
+  "4": {
+   "ok": true,
+   "s": 279.3,
+   "prompt_tokens": 23549,
+   "completion_tokens": 300
+  },
+  "2": {
+   "ok": true,
+   "s": 296.8,
+   "prompt_tokens": 24950,
+   "completion_tokens": 300
+  },
+  "15": {
+   "ok": true,
+   "s": 347.9,
+   "prompt_tokens": 23550,
+   "completion_tokens": 300
+  },
+  "0": {
+   "ok": true,
+   "s": 362.2,
+   "prompt_tokens": 23549,
+   "completion_tokens": 300
+  },
+  "9": {
+   "ok": true,
+   "s": 370.1,
+   "prompt_tokens": 23549,
+   "completion_tokens": 300
+  },
+  "7": {
+   "ok": true,
+   "s": 375.7,
+   "prompt_tokens": 24951,
+   "completion_tokens": 300
+  },
+  "1": {
+   "ok": true,
+   "s": 377.4,
+   "prompt_tokens": 24950,
+   "completion_tokens": 300
+  },
+  "16": {
+   "ok": true,
+   "s": 377.8,
+   "prompt_tokens": 23550,
+   "completion_tokens": 300
+  },
+  "19": {
+   "ok": true,
+   "s": 388.9,
+   "prompt_tokens": 23549,
+   "completion_tokens": 300
+  },
+  "10": {
+   "ok": true,
+   "s": 389.3,
+   "prompt_tokens": 24950,
+   "completion_tokens": 300
+  }
+ }
+}
