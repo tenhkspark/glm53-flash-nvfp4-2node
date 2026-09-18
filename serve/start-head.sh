@@ -126,7 +126,7 @@ docker run -d --name "$CONTAINER" --network host --gpus all \
     exec vllm serve /checkpoint \
     --served-model-name GLM-5.3-Flash-NVFP4-Wabi \
     --host 0.0.0.0 --port $PORT \
-    --tensor-parallel-size 2 --data-parallel-size 1 --enable-expert-parallel \
+    --tensor-parallel-size 2 --data-parallel-size 1 \
     --distributed-executor-backend ray \
     --reasoning-parser glm45 --kernel-config '$KC' \
     --enable-auto-tool-choice --tool-call-parser glm45 \
