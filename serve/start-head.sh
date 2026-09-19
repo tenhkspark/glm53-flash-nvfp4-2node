@@ -97,6 +97,22 @@ else
   mnt mla-quant.py "$PKG/vllm/models/glm5next/nvidia/model.py"
 fi
 
+# JIT_CACHE_DIR (optional): host dir to keep the Triton / TorchInductor /
+# FlashInfer JIT caches in. Without it every boot recompiles into the
+# container layer and throws the result away on `docker rm`, and vLLM's
+# own jit_monitor then reports compilations happening during inference.
+# Unset = the stock behaviour, i.e. this knob changes nothing unless set.
+JIT_MNT=""; JIT_ENV=""
+if [ -n "${JIT_CACHE_DIR:-}" ]; then
+  abs "$JIT_CACHE_DIR" JIT_CACHE_DIR
+  mkdir -p "$JIT_CACHE_DIR"
+  JIT_MNT="-v $JIT_CACHE_DIR:/jit-cache"
+  JIT_ENV="-e TRITON_CACHE_DIR=/jit-cache/triton"
+  JIT_ENV="$JIT_ENV -e TORCHINDUCTOR_CACHE_DIR=/jit-cache/inductor"
+  JIT_ENV="$JIT_ENV -e FLASHINFER_WORKSPACE_DIR=/jit-cache/flashinfer"
+  JIT_ENV="$JIT_ENV -e VLLM_CACHE_ROOT=/jit-cache/vllm"
+fi
+
 MTP_MNT=""; SPEC_ARG=""
 if [ -n "${MTP_DIR:-}" ]; then
   [ -d "$MTP_DIR" ] || { echo "FAIL: MTP_DIR is not a directory: $MTP_DIR" >&2; exit 1; }
@@ -116,7 +132,7 @@ KC='{"enable_flashinfer_autotune": false}'
 docker run -d --name "$CONTAINER" --network host --gpus all \
   --shm-size=32g --ipc=host \
   -v "$MODEL_DIR":/checkpoint:ro \
-  $MOUNTS $MTP_MNT $STEP_ENV $NCCL_IB_ENV $NCCL_IB_ARGS \
+  $MOUNTS $MTP_MNT $JIT_MNT $STEP_ENV $JIT_ENV $NCCL_IB_ENV $NCCL_IB_ARGS \
   --entrypoint bash \
   "$IMAGE" -lc "python3 -c 'import ray' 2>/dev/null || pip install -q ray; \
     export VLLM_ENGINE_READY_TIMEOUT_S=3600 RAY_memory_usage_threshold=0.99 VLLM_HOST_IP=$HEAD_IP \
