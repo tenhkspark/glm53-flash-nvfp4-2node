@@ -1,4 +1,4 @@
-# V2 測定報告 — NCCL チャネル数と JIT キャッシュ永続化
+# 測定報告（2026-09-19、v1 の小改訂）— NCCL チャネル数と JIT キャッシュ永続化
 
 この文書は、二台サービングレシピ([README.ja.md](README.ja.md) /
 [AGENTS.md](AGENTS.md) の構成)の serve スクリプトに私が足した二つの任意
