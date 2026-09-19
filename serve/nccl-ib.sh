@@ -38,6 +38,16 @@ nccl_ib_setup() {  # $1 = netdev name carrying RoCE (e.g. enp1s0f0np0)
   NCCL_IB_ENV="$NCCL_IB_ENV -e NCCL_IB_DISABLE=0"
   NCCL_IB_ENV="$NCCL_IB_ENV -e NCCL_IB_HCA=$hca -e NCCL_IB_GID_INDEX=$gid"
 
+  # NCCL_NCHANNELS (optional): cap the channel count. NCCL sizes its
+  # per-channel buffers out of the same unified memory the engine serves
+  # from, so on this part the default (64 coll / 64 p2p here) is host RAM
+  # the model cannot use. Unset = the stock default, i.e. this knob
+  # changes nothing unless you set it.
+  if [ -n "${NCCL_NCHANNELS:-}" ]; then
+    NCCL_IB_ENV="$NCCL_IB_ENV -e NCCL_MAX_NCHANNELS=$NCCL_NCHANNELS"
+    NCCL_IB_ENV="$NCCL_IB_ENV -e NCCL_MAX_P2P_NCHANNELS=$NCCL_NCHANNELS"
+  fi
+
   # --gpus all does not pass uverbs/rdma_cm: without --device the plugin
   # reports "No device found". memlock -1 is required for ibv_reg_mr
   # pinning (container default is only 8 MiB).

@@ -1,0 +1,63 @@
+[
+  {
+    "Id": "a1b2c3d4e5f6",
+    "State": {
+      "Running": true
+    },
+    "Config": {
+      "Image": "vllm/vllm-openai:glm53-flash-arm64-cu130-nccl-ib",
+      "Entrypoint": [
+        "bash"
+      ],
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "NCCL_DEBUG=INFO",
+        "NCCL_DEBUG_SUBSYS=INIT,NET",
+        "NCCL_IB_DISABLE=0",
+        "NCCL_IB_HCA=mlx5_0",
+        "NCCL_IB_GID_INDEX=3"
+      ]
+    },
+    "Args": [
+      "-lc",
+      "python3 -c 'import ray' 2>/dev/null || pip install -q ray; export VLLM_ENGINE_READY_TIMEOUT_S=3600 RAY_memory_usage_threshold=0.99 VLLM_HOST_IP=192.0.2.10 NCCL_SOCKET_IFNAME=enp1s0f0np0 GLOO_SOCKET_IFNAME=enp1s0f0np0 && ray start --head --node-ip-address=192.0.2.10 --port=6399 --num-gpus=1 --dashboard-host=127.0.0.1 && exec vllm serve /checkpoint --served-model-name GLM-5.3-Flash-NVFP4-Wabi --host 0.0.0.0 --port 8000 --tensor-parallel-size 2 --data-parallel-size 1 --distributed-executor-backend ray --reasoning-parser glm45 --kernel-config '{\"enable_flashinfer_autotune\": false}' --enable-auto-tool-choice --tool-call-parser glm45 --kv-cache-dtype fp8 --model-loader-extra-config '{\"enable_multithread_load\": true, \"num_threads\": 32}' --max-num-batched-tokens 8192 --enable-chunked-prefill --max-num-seqs 20 --max-model-len 204800 --gpu-memory-utilization 0.85 --enable-prefix-caching --limit-mm-per-prompt '{\"image\":0,\"video\":0}' --speculative-config '{\"method\":\"mtp\",\"model\":\"/checkpoint-mtp\",\"num_speculative_tokens\":2}'"
+    ],
+    "Mounts": [
+      {
+        "Type": "bind",
+        "Source": "/models/GLM-5.3-Flash-NVFP4-h",
+        "Destination": "/checkpoint",
+        "Mode": "ro",
+        "RW": false
+      },
+      {
+        "Type": "bind",
+        "Source": "/repo/overlays/_build/kda-quant.py",
+        "Destination": "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/kda.py",
+        "Mode": "ro",
+        "RW": false
+      },
+      {
+        "Type": "bind",
+        "Source": "/repo/overlays/_build/glm5next-mtp-bf16.py",
+        "Destination": "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/mtp.py",
+        "Mode": "ro",
+        "RW": false
+      },
+      {
+        "Type": "bind",
+        "Source": "/repo/overlays/_build/flashinfer_mla_sparse_sm120.py",
+        "Destination": "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py",
+        "Mode": "ro",
+        "RW": false
+      },
+      {
+        "Type": "bind",
+        "Source": "/repo/overlays/_build/mla-quant.py",
+        "Destination": "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/model.py",
+        "Mode": "ro",
+        "RW": false
+      }
+    ]
+  }
+]
