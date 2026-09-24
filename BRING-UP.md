@@ -289,17 +289,21 @@ scripts — no env needed, and `verify-serve.sh` checks them.
 ### 3.2 Head, wait for Ray, worker, wait for READY
 
 ```bash
-# on the head node (pair 2: cd ~/dogfood/repo30)
+# on the head node: pair 1 uses ~/glm53-repo30; pair 2 uses ~/dogfood/repo30
 cd ~/glm53-repo30 && set -a; . serve/serve.env; set +a
 bash serve/start-head.sh
 
 # then — the worker joins HEAD_IP:6399 and fails if nothing listens:
 until bash -c '</dev/tcp/192.0.2.2/6399' 2>/dev/null; do sleep 5; done   # from the worker; or ss -ltn | grep 6399 on the head
 
-# on the worker node (pair 2: cd ~/dogfood/repo30, HEAD_IP 198.51.100.2)
+# on the worker node: pair 1 uses ~/glm53-repo30; pair 2 uses ~/dogfood/repo30
 cd ~/glm53-repo30 && set -a; . serve/serve.env; set +a
 bash serve/start-worker.sh
 ```
+
+For pair 2, use `cd ~/dogfood/repo30` in both commands above and set
+`HEAD_IP=198.51.100.2` in its worker environment. The pair-1 path and
+link address shown in the example commands are not valid for pair 2.
 
 READY takes ~15 min (observed 842–921 s; weight load alone ~13 min).
 Poll the API, budget 40 min:

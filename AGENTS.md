@@ -333,8 +333,8 @@ ceiling do not multiply into a supported workload. The serve line ships
 not what it decodes together. Sending 20 requests of about 25,000 tokens
 at once against this pair ran 6 of them concurrently, queued the rest,
 and finished all 20 with zero failures and zero preemptions
-(`results/logs/route-h-seqs-c20-p1-*`); I do not restrict concurrency
-beyond what that measurement shows.
+(`results/logs/route-h-seqs-c20-p1-*`). This is one measurement at
+about 25,000 tokens per prompt, not a general concurrency guarantee.
 
 ## 6. Gate, then measure
 
@@ -393,7 +393,7 @@ Then replace every `CHANGEME`:
 | `MODEL_ID`, `MODEL_REVISION` | what step 4 downloads; pin a commit sha to freeze the checkpoint |
 | `IMAGE`, `NCCL_IB_IMAGE` | base image and the derived RDMA tag built in step 5 |
 | `NCCL_IB` | 1 = derived image + NET/IB, 0 = stock image over sockets |
-| `MTP_K` | speculative tokens; step 1 refuses K >= 4, which does not boot on 128 GB unified memory |
+| `MTP_K` | speculative tokens; step 1 refuses K >= 4 as outside this runbook's reproduced configuration. K=4 booted on route h but was not measured there |
 | `PORT` | API port on the head node |
 | `VERIFY_TOL` | the step 11 band, default 0.07 |
 | `LABEL`, `RESULTS_DIR` | result file `results/measure-<LABEL>.json` and the local dir it is copied back to |
